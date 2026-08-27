@@ -1,5 +1,24 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
+async function handleResponse(response: Response, defaultErrorMsg: string) {
+  const data = await response.json();
+
+  if (response.status === 401 && typeof window !== "undefined") {
+    localStorage.removeItem("gullybaba_admin_token");
+    localStorage.removeItem("gullybaba_admin_user");
+    localStorage.removeItem("gullybaba_admin_profile");
+    if (window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(data.message || defaultErrorMsg);
+  }
+
+  return data;
+}
+
 export async function checkBackend() {
   const response = await fetch(`${API_URL}/api/health`);
 
@@ -19,12 +38,7 @@ export async function loginAdmin(credentials: Record<string, string>) {
     body: JSON.stringify(credentials),
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || "Login failed");
-  }
-
-  return data;
+  return handleResponse(response, "Login failed");
 }
 
 export async function getWelcomeMessage(token: string) {
@@ -36,12 +50,7 @@ export async function getWelcomeMessage(token: string) {
     },
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to fetch welcome message");
-  }
-
-  return data;
+  return handleResponse(response, "Failed to fetch welcome message");
 }
 
 export async function fetchUserById(token: string, id: number | string) {
@@ -53,12 +62,7 @@ export async function fetchUserById(token: string, id: number | string) {
     },
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to fetch user data");
-  }
-
-  return data;
+  return handleResponse(response, "Failed to fetch user data");
 }
 
 export async function fetchUsers(token: string, page = 1, limit = 20, search = "", role = "") {
@@ -77,12 +81,7 @@ export async function fetchUsers(token: string, page = 1, limit = 20, search = "
     },
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to fetch users");
-  }
-
-  return data;
+  return handleResponse(response, "Failed to fetch users");
 }
 
 export async function fetchOrders(
@@ -115,12 +114,31 @@ export async function fetchOrders(
     },
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to fetch orders");
-  }
+  return handleResponse(response, "Failed to fetch orders");
+}
 
-  return data;
+export async function fetchOrderStatusCounts(token: string) {
+  const response = await fetch(`${API_URL}/api/orders/status-counts`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to fetch order status counts");
+}
+
+export async function fetchOrderById(token: string, id: number | string) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to fetch order details");
 }
 
 export async function updateOrderStatus(token: string, orderId: number, status: string) {
@@ -133,12 +151,7 @@ export async function updateOrderStatus(token: string, orderId: number, status: 
     body: JSON.stringify({ status }),
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to update order status");
-  }
-
-  return data;
+  return handleResponse(response, "Failed to update order status");
 }
 
 export async function fetchProducts(
@@ -165,12 +178,7 @@ export async function fetchProducts(
     },
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to fetch products");
-  }
-
-  return data;
+  return handleResponse(response, "Failed to fetch products");
 }
 
 export async function fetchCoupons(
@@ -195,12 +203,7 @@ export async function fetchCoupons(
     },
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to fetch coupons");
-  }
-
-  return data;
+  return handleResponse(response, "Failed to fetch coupons");
 }
 
 export async function fetchPosts(
@@ -225,12 +228,7 @@ export async function fetchPosts(
     },
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to fetch blog posts");
-  }
-
-  return data;
+  return handleResponse(response, "Failed to fetch blog posts");
 }
 
 export async function fetchAbandonedCarts(
@@ -255,11 +253,6 @@ export async function fetchAbandonedCarts(
     },
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to fetch abandoned carts");
-  }
-
-  return data;
+  return handleResponse(response, "Failed to fetch abandoned carts");
 }
 

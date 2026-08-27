@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
-import { fetchOrders, updateOrderStatus } from "@/src/services/api";
+import { fetchOrders, fetchOrderStatusCounts, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
 
 interface Order {
@@ -33,6 +34,7 @@ interface Order {
 
 export default function OrdersPage() {
   const { token, ready } = useAuthGuard();
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -55,7 +57,25 @@ export default function OrdersPage() {
   const [rowStatusActions, setRowStatusActions] = useState<Record<number, string>>({});
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<Record<number, boolean>>({});
 
+  // Order statuses, driven live by the status column in the orders table
+  const [statusList, setStatusList] = useState<{ value: string; label: string }[]>([]);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [totalOrdersCount, setTotalOrdersCount] = useState(0);
+
   const limit = 20;
+
+  const loadStatusCounts = async (token: string) => {
+    try {
+      const res = await fetchOrderStatusCounts(token);
+      if (res.success) {
+        setStatusList(res.statusList || []);
+        setStatusCounts(res.counts || {});
+        setTotalOrdersCount(res.total || 0);
+      }
+    } catch (err: any) {
+      // Non-critical for the page to function; tabs simply stay empty on failure.
+    }
+  };
 
   const loadData = async (
     token: string,
@@ -105,6 +125,12 @@ export default function OrdersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, token, currentPage, selectedStatus, paymentMethod]);
 
+  useEffect(() => {
+    if (!ready || !token) return;
+    loadStatusCounts(token);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, token]);
+
   const triggerApplyFilters = () => {
     if (!token) return;
     setCurrentPage(1);
@@ -133,8 +159,9 @@ export default function OrdersPage() {
       const res = await updateOrderStatus(token, orderId, newStatus);
       if (res.success) {
         showNotification(`Order #${orderId} status changed to ${newStatus} successfully!`, "success");
-        // Reload page data
+        // Reload page data and refresh the status tab counts
         await loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, categoryQuery, paymentMethod);
+        await loadStatusCounts(token);
       }
     } catch (err: any) {
       showNotification(err.message || `Failed to update status for order #${orderId}`, "error");
@@ -171,15 +198,12 @@ export default function OrdersPage() {
     return "bg-slate-50 border-slate-200 text-slate-800";
   };
 
-  const statusList = [
-    { label: "All", value: "all" },
-    { label: "Pending payment", value: "pending" },
-    { label: "Processing", value: "processing" },
-    { label: "On hold", value: "on-hold" },
-    { label: "Completed", value: "completed" },
-    { label: "Cancelled", value: "cancelled" },
-    { label: "Refunded", value: "refunded" },
-    { label: "Failed", value: "failed" }
+  // Tabs: "All" plus every status that actually has orders, in canonical order
+  const statusTabs = [
+    { label: "All", value: "all", count: totalOrdersCount },
+    ...statusList
+      .filter((s) => (statusCounts[s.value] || 0) > 0)
+      .map((s) => ({ label: s.label, value: s.value, count: statusCounts[s.value] })),
   ];
 
   return (
@@ -217,8 +241,8 @@ export default function OrdersPage() {
           </div>
 
           {/* Status Quick Links Tabs */}
-          <div className="bg-white border-b border-gray-200 px-6 py-2 shrink-0 flex items-center gap-1.5 text-xs overflow-x-auto whitespace-nowrap">
-            {statusList.map((tab, idx) => {
+          <div className="bg-white border-b border-gray-200 px-6 py-2 shrink-0 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+            {statusTabs.map((tab, idx) => {
               const isActive = selectedStatus === tab.value;
               return (
                 <div key={tab.value} className="flex items-center">
@@ -232,9 +256,9 @@ export default function OrdersPage() {
                       : "text-gray-600 hover:text-[#E31E24]"
                       }`}
                   >
-                    {tab.label}
+                    {tab.label} ({tab.count.toLocaleString("en-IN")})
                   </button>
-                  {idx < statusList.length - 1 && (
+                  {idx < statusTabs.length - 1 && (
                     <span className="text-gray-300 mx-2">|</span>
                   )}
                 </div>
@@ -247,17 +271,7 @@ export default function OrdersPage() {
             {/* Row 1: Search & Simple dropdowns */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 whitespace-nowrap font-medium font-sans">Bulk actions:</span>
-                <select className="bg-gray-50 border border-gray-250 rounded px-2.5 py-1 text-xs text-gray-700 font-sans">
-                  <option>Bulk actions</option>
-                  <option>Change status to processing</option>
-                  <option>Change status to completed</option>
-                </select>
-                <button className="text-[10px] font-bold border border-gray-300 hover:bg-gray-50 px-3 py-1 rounded transition-colors font-sans">
-                  Apply
-                </button>
-              </div>
+           
 
               {/* Top-right Search input */}
               <div className="flex items-center gap-2 w-full md:w-auto max-w-md">
@@ -345,20 +359,7 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {/* Payment Type Filter */}
-              <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5 justify-between">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider font-sans">Payment Type Filter</span>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="w-full bg-white border border-gray-250 px-2.5 py-1 text-xs text-gray-700 rounded outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans font-medium"
-                >
-                  <option value="all">Payment Type (All)</option>
-                  <option value="cod">Cash on delivery (COD)</option>
-                  <option value="razorpay">Razorpay</option>
-                  <option value="bacs">Direct bank transfer</option>
-                </select>
-              </div>
+          
 
             </div>
           </div>
@@ -410,8 +411,12 @@ export default function OrdersPage() {
                       </tr>
                     ) : (
                       orders.map((order) => (
-                        <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="py-3 px-4">
+                        <tr
+                          key={order.id}
+                          onClick={() => router.push(`/orders/${order.id}`)}
+                          className="hover:bg-gray-50/50 transition-colors cursor-pointer"
+                        >
+                          <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                             <input type="checkbox" className="rounded" />
                           </td>
                           <td className="py-3 px-4 font-sans text-[#E31E24] font-bold">
@@ -437,7 +442,7 @@ export default function OrdersPage() {
                           </td>
                           <td className="py-3 px-4 text-gray-600 font-mono">{order.billing.phone || "—"}</td>
                           <td className="py-3 px-4 text-gray-500 font-sans lowercase">{order.billing.email || "—"}</td>
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center gap-1.5">
                               <select
                                 value={rowStatusActions[order.id] || order.status}
@@ -447,13 +452,9 @@ export default function OrdersPage() {
                                 }}
                                 className="bg-gray-50 border border-gray-250 rounded px-1 py-0.5 text-[10px] text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
                               >
-                                <option value="pending">Pending</option>
-                                <option value="processing">Processing</option>
-                                <option value="on-hold">On hold</option>
-                                <option value="completed">Completed</option>
-                                <option value="cancelled">Cancelled</option>
-                                <option value="refunded">Refunded</option>
-                                <option value="failed">Failed</option>
+                                {statusList.map((s) => (
+                                  <option key={s.value} value={s.value}>{s.label}</option>
+                                ))}
                               </select>
                               <button
                                 onClick={() => handleStatusChangeSubmit(order.id)}
