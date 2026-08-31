@@ -141,6 +141,105 @@ export async function fetchOrderById(token: string, id: number | string) {
   return handleResponse(response, "Failed to fetch order details");
 }
 
+export async function fetchOrderWeight(token: string, id: number | string) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}/weight`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to compute order weight");
+}
+
+export async function previewTekipost(token: string, id: number | string, totalWeight: number) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}/tekipost-preview`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ total_weight: totalWeight }),
+  });
+
+  return handleResponse(response, "Failed to build TekiPost preview");
+}
+
+export async function previewShiprocket(token: string, id: number | string, totalWeight: number) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}/shiprocket-preview`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ total_weight: totalWeight }),
+  });
+
+  return handleResponse(response, "Failed to build Shiprocket preview");
+}
+
+export async function fetchTekipostStatus(token: string, id: number | string) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}/tekipost-status`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to fetch TekiPost status");
+}
+
+export async function fetchShiprocketStatus(token: string, id: number | string) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}/shiprocket-status`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to fetch Shiprocket status");
+}
+
+export async function fetchOrderNotes(token: string, id: number | string) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}/notes`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to fetch order notes");
+}
+
+export async function addOrderNote(token: string, id: number | string, content: string, noteType: string) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}/notes`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ content, note_type: noteType }),
+  });
+
+  return handleResponse(response, "Failed to add order note");
+}
+
+export async function deleteOrderNote(token: string, id: number | string, noteId: number) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}/notes/${noteId}`, {
+    method: "DELETE",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to delete order note");
+}
+
 export async function updateOrderStatus(token: string, orderId: number, status: string) {
   const response = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
     method: "PUT",

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
-import { fetchOrderById, fetchOrderStatusCounts, updateOrderStatus } from "@/src/services/api";
+import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, previewShiprocket, previewTekipost, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
 
 interface Address {
@@ -36,6 +36,15 @@ interface FeeLine {
   id: number;
   name: string;
   total: string;
+}
+
+interface OrderNote {
+  id: number;
+  content: string;
+  date: string;
+  author: string;
+  is_customer_note: boolean;
+  is_system_note: boolean;
 }
 
 interface OrderDetail {
@@ -84,6 +93,18 @@ export default function OrderDetailPage() {
   const [isEditingShipping, setIsEditingShipping] = useState(false);
   const [billingForm, setBillingForm] = useState<Address | null>(null);
   const [shippingForm, setShippingForm] = useState<Address | null>(null);
+  const [weight, setWeight] = useState<string>("");
+  const [isLoadingWeight, setIsLoadingWeight] = useState(false);
+  const [isSendingTekipost, setIsSendingTekipost] = useState(false);
+  const [isSendingShiprocket, setIsSendingShiprocket] = useState(false);
+  const [isFetchingTekipostStatus, setIsFetchingTekipostStatus] = useState(false);
+  const [isFetchingShiprocketStatus, setIsFetchingShiprocketStatus] = useState(false);
+  const [notes, setNotes] = useState<OrderNote[]>([]);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
+  const [newNoteContent, setNewNoteContent] = useState("");
+  const [newNoteType, setNewNoteType] = useState("");
+  const [isAddingNote, setIsAddingNote] = useState(false);
+  const [deletingNoteId, setDeletingNoteId] = useState<number | null>(null);
 
   const showNotification = (message: string, type: "success" | "error") => {
     setNotification({ message, type });
@@ -106,14 +127,134 @@ export default function OrderDetailPage() {
     }
   };
 
+  const loadNotes = async (tok: string) => {
+    try {
+      setIsLoadingNotes(true);
+      const res = await fetchOrderNotes(tok, orderId);
+      if (res.success) setNotes(res.notes || []);
+    } catch (err: any) {
+      console.error("Failed to load order notes:", err);
+    } finally {
+      setIsLoadingNotes(false);
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!token || !order || !newNoteContent.trim()) return;
+    try {
+      setIsAddingNote(true);
+      const res = await addOrderNote(token, order.id, newNoteContent.trim(), newNoteType);
+      if (res.success) {
+        setNotes((prev) => [res.note, ...prev]);
+        setNewNoteContent("");
+        setNewNoteType("");
+      }
+    } catch (err: any) {
+      showNotification(err.message || "Failed to add order note", "error");
+    } finally {
+      setIsAddingNote(false);
+    }
+  };
+
+  const handleDeleteNote = async (noteId: number) => {
+    if (!token || !order) return;
+    try {
+      setDeletingNoteId(noteId);
+      const res = await deleteOrderNote(token, order.id, noteId);
+      if (res.success) {
+        setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      }
+    } catch (err: any) {
+      showNotification(err.message || "Failed to delete order note", "error");
+    } finally {
+      setDeletingNoteId(null);
+    }
+  };
+
   useEffect(() => {
     if (!ready || !token || !orderId) return;
     loadOrder(token);
+    loadNotes(token);
     fetchOrderStatusCounts(token).then((res) => {
       if (res.success) setStatusList(res.statusList || []);
     }).catch(() => {});
+
+    setIsLoadingWeight(true);
+    fetchOrderWeight(token, orderId).then((res) => {
+      if (res.success) {
+        setWeight(String(res.total_weight));
+        if (res.warnings?.length) console.warn(`[tekipost] weight warnings for order #${orderId}:`, res.warnings);
+      }
+    }).catch((err) => console.error("Failed to compute order weight:", err))
+      .finally(() => setIsLoadingWeight(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, token, orderId]);
+
+  const handleSendToTekipost = async () => {
+    if (!token || !order) return;
+    if (!weight || Number(weight) <= 0) {
+      showNotification("Enter a valid weight before sending to TekiPost.", "error");
+      return;
+    }
+    try {
+      setIsSendingTekipost(true);
+      const res = await previewTekipost(token, order.id, Number(weight));
+      console.log(`[tekipost] preview payload for order #${order.id}:`, res.payload);
+      if (res.warnings?.length) console.warn(`[tekipost] preview warnings for order #${order.id}:`, res.warnings);
+      showNotification("TekiPost payload built — check the browser console. Not sent yet (API call is commented out).", "success");
+    } catch (err: any) {
+      showNotification(err.message || "Failed to build TekiPost preview", "error");
+    } finally {
+      setIsSendingTekipost(false);
+    }
+  };
+
+  const handleSendToShiprocket = async () => {
+    if (!token || !order) return;
+    if (!weight || Number(weight) <= 0) {
+      showNotification("Enter a valid weight before sending to Shiprocket.", "error");
+      return;
+    }
+    try {
+      setIsSendingShiprocket(true);
+      const res = await previewShiprocket(token, order.id, Number(weight));
+      console.log(`[shiprocket] preview payload for order #${order.id}:`, res.payload);
+      if (res.warnings?.length) console.warn(`[shiprocket] preview warnings for order #${order.id}:`, res.warnings);
+      showNotification("Shiprocket payload built — check the browser console. Not sent yet (API call is commented out).", "success");
+    } catch (err: any) {
+      showNotification(err.message || "Failed to build Shiprocket preview", "error");
+    } finally {
+      setIsSendingShiprocket(false);
+    }
+  };
+
+  const handleFetchTekipostStatus = async () => {
+    if (!token || !order) return;
+    try {
+      setIsFetchingTekipostStatus(true);
+      const res = await fetchTekipostStatus(token, order.id);
+      console.log(`[tekipost-status] response for order #${order.id}:`, res);
+      showNotification(res.message || "TekiPost status fetched.", "success");
+    } catch (err: any) {
+      showNotification(err.message || "Failed to fetch TekiPost status", "error");
+    } finally {
+      setIsFetchingTekipostStatus(false);
+    }
+  };
+
+  const handleFetchShiprocketStatus = async () => {
+    if (!token || !order) return;
+    try {
+      setIsFetchingShiprocketStatus(true);
+      const res = await fetchShiprocketStatus(token, order.id);
+      console.log(`[shiprocket-status] response for order #${order.id}:`, res);
+      showNotification(res.message || "Shiprocket status fetched.", "success");
+    } catch (err: any) {
+      showNotification(err.message || "Failed to fetch Shiprocket status", "error");
+    } finally {
+      setIsFetchingShiprocketStatus(false);
+    }
+  };
 
   const handleUpdateStatus = async () => {
     if (!token || !order || !selectedStatus) return;
@@ -344,12 +485,22 @@ export default function OrderDetailPage() {
 
                       <div>
                         <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Weight (kg) :</div>
-                        <div className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans">—</div>
+                        <input
+                          type="text"
+                          value={isLoadingWeight ? "Calculating…" : weight}
+                          disabled={isLoadingWeight}
+                          onChange={(e) => setWeight(e.target.value)}
+                          className="w-full bg-white border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] disabled:bg-gray-50 disabled:text-gray-400"
+                        />
                       </div>
 
                       <div className="flex items-center gap-2 pt-1">
-                        <button disabled className="text-[10px] font-bold text-white bg-gray-300 px-3 py-1.5 rounded cursor-not-allowed font-sans">
-                          Send to Shiprocket
+                        <button
+                          onClick={handleSendToShiprocket}
+                          disabled={isSendingShiprocket || isLoadingWeight}
+                          className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
+                        >
+                          {isSendingShiprocket ? "Building…" : "Send to Shiprocket"}
                         </button>
                         <span className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] px-2.5 py-1.5 rounded font-sans">Status: Not Sent</span>
                       </div>
@@ -367,11 +518,15 @@ export default function OrderDetailPage() {
                       </div>
 
                       <div className="flex items-center gap-2 pt-1">
-                        <button disabled className="text-[10px] font-bold text-white bg-gray-300 px-3 py-1.5 rounded cursor-not-allowed font-sans">
-                          Click to Get Current Status of Shiprocket Details
+                        <button
+                          onClick={handleFetchShiprocketStatus}
+                          disabled={isFetchingShiprocketStatus}
+                          className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
+                        >
+                          {isFetchingShiprocketStatus ? "Checking…" : "Click to Get Current Status of Shiprocket Details"}
                         </button>
                         <a
-                          href={`https://wa.me/91${(order.shipping.phone || order.billing.phone || "").replace(/\D/g, "")}`}
+                          href={`https://wa.me/91${(order.billing.phone || "").replace(/\D/g, "")}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-[10px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded font-sans"
@@ -419,8 +574,12 @@ export default function OrderDetailPage() {
 
                       <div className="pt-2 border-t border-gray-100 space-y-2">
                         <div className="flex items-center gap-2">
-                          <button disabled className="text-[10px] font-bold text-white bg-gray-300 px-3 py-1.5 rounded cursor-not-allowed font-sans">
-                            Send to Tekipost
+                          <button
+                            onClick={handleSendToTekipost}
+                            disabled={isSendingTekipost || isLoadingWeight}
+                            className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
+                          >
+                            {isSendingTekipost ? "Building…" : "Send to Tekipost"}
                           </button>
                           <span className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] px-2.5 py-1.5 rounded font-sans">Status: Not Sent</span>
                         </div>
@@ -431,8 +590,12 @@ export default function OrderDetailPage() {
                           <span className="text-gray-500">Tracking URL: </span>
                           <a href="https://app.tekipost.com/track-order" target="_blank" rel="noopener noreferrer" className="text-[#E31E24] hover:underline">https://app.tekipost.com/track-order</a>
                         </div>
-                        <button disabled className="text-[10px] font-bold text-white bg-gray-300 px-3 py-1.5 rounded cursor-not-allowed font-sans">
-                          Click to Get Current Status of tekipost Details
+                        <button
+                          onClick={handleFetchTekipostStatus}
+                          disabled={isFetchingTekipostStatus}
+                          className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
+                        >
+                          {isFetchingTekipostStatus ? "Checking…" : "Click to Get Current Status of tekipost Details"}
                         </button>
                       </div>
                     </div>
@@ -548,33 +711,77 @@ export default function OrderDetailPage() {
                       </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-3">
-                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Order actions</h4>
-                      <select disabled className="w-full bg-gray-100 border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-400 font-sans cursor-not-allowed">
-                        <option>Choose an action...</option>
-                      </select>
-                      <button
-                        onClick={handleUpdateStatus}
-                        disabled={isSaving || selectedStatus === order.status}
-                        className="w-full text-xs font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-2 rounded transition-colors font-sans"
-                      >
-                        {isSaving ? "Updating..." : "Update"}
-                      </button>
-                    </div>
+
 
                     <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-3">
                       <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Order notes</h4>
-                      <textarea
-                        disabled
-                        placeholder="Add note (coming soon)"
-                        className="w-full bg-gray-100 border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-400 font-sans cursor-not-allowed resize-none"
-                        rows={2}
-                      />
-                      <button disabled className="w-full text-[10px] font-bold text-gray-400 border border-gray-200 px-3 py-1.5 rounded cursor-not-allowed font-sans">
-                        Add
-                      </button>
-                      <div className="text-xs text-gray-400 font-sans pt-2 border-t border-gray-100">
-                        No order notes available yet.
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1 block">Add note</label>
+                        <textarea
+                          value={newNoteContent}
+                          onChange={(e) => setNewNoteContent(e.target.value)}
+                          placeholder="Add note"
+                          className="w-full bg-white border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] resize-none"
+                          rows={3}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={newNoteType}
+                          onChange={(e) => setNewNoteType(e.target.value)}
+                          className="flex-1 bg-white border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
+                        >
+                          <option value="">Private note</option>
+                          <option value="customer">Note to customer</option>
+                        </select>
+                        <button
+                          onClick={handleAddNote}
+                          disabled={isAddingNote || !newNoteContent.trim()}
+                          className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] hover:bg-red-50 disabled:text-gray-300 disabled:border-gray-200 disabled:hover:bg-transparent px-3 py-1.5 rounded transition-colors font-sans shrink-0"
+                        >
+                          {isAddingNote ? "Adding…" : "Add"}
+                        </button>
+                      </div>
+
+                      <div className="pt-2 border-t border-gray-100 space-y-2 max-h-96 overflow-y-auto">
+                        {isLoadingNotes ? (
+                          <div className="text-xs text-gray-400 font-sans">Loading notes…</div>
+                        ) : notes.length === 0 ? (
+                          <div className="text-xs text-gray-400 font-sans">No order notes available yet.</div>
+                        ) : (
+                          notes.map((note) => (
+                            <div
+                              key={note.id}
+                              className={`rounded px-3 py-2 text-xs font-sans ${
+                                note.is_customer_note
+                                  ? "bg-blue-50 border border-blue-100"
+                                  : note.is_system_note
+                                  ? "bg-purple-50 border border-purple-100"
+                                  : "bg-gray-50 border border-gray-150"
+                              }`}
+                            >
+                              <div className="text-gray-800 whitespace-pre-wrap">{note.content}</div>
+                              <div className="mt-1.5 text-[10px] text-gray-500">
+                                {new Date(note.date).toLocaleString("en-US", {
+                                  month: "long",
+                                  day: "numeric",
+                                  year: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                  hour12: true,
+                                })}
+                                {" — "}
+                                <button
+                                  onClick={() => handleDeleteNote(note.id)}
+                                  disabled={deletingNoteId === note.id}
+                                  className="text-[#E31E24] hover:underline font-semibold disabled:text-gray-300"
+                                >
+                                  {deletingNoteId === note.id ? "Deleting…" : "Delete note"}
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
 
