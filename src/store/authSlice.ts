@@ -5,6 +5,12 @@ const TOKEN_KEY = "gullybaba_admin_token";
 const ADMIN_KEY = "gullybaba_admin_user";
 const PROFILE_KEY = "gullybaba_admin_profile";
 
+export interface AdminUserMeta {
+  id: number;
+  key: string;
+  value: string[];
+}
+
 export interface AdminUser {
   id: number;
   username: string;
@@ -25,6 +31,7 @@ export interface CustomerProfile {
   shipping?: Record<string, string> | null;
   date_created: string;
   avatar_url?: string | null;
+  meta_data?: AdminUserMeta[];
 }
 
 interface AuthState {
@@ -77,6 +84,11 @@ function persistAuth(token: string, admin: AdminUser, profile: CustomerProfile |
   }
 }
 
+function persistProfile(profile: CustomerProfile) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+}
+
 function clearStoredAuth() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(ADMIN_KEY);
@@ -106,6 +118,21 @@ export const loginUser = createAsyncThunk(
 
     persistAuth(token, admin, profile);
     return { token, admin, profile };
+  }
+);
+
+// Har page load pe latest permissions WooCommerce se fetch karta hai, taaki access
+// change hone par logout/login kiye bina hi naya permission apply ho jaaye.
+export const refreshProfile = createAsyncThunk(
+  "auth/refreshProfile",
+  async ({ token, id }: { token: string; id: number }) => {
+    const profileRes = await fetchUserById(token, id);
+    if (!profileRes.success) {
+      throw new Error(profileRes.message || "Failed to refresh profile");
+    }
+    const profile: CustomerProfile = profileRes.user;
+    persistProfile(profile);
+    return profile;
   }
 );
 
@@ -143,6 +170,9 @@ const authSlice = createSlice({
       .addCase(loginUser.rejected, (state, action) => {
         state.status = "failed";
         state.error = action.error.message || "Login failed";
+      })
+      .addCase(refreshProfile.fulfilled, (state, action) => {
+        state.profile = action.payload;
       });
   },
 });

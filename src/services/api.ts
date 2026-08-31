@@ -129,6 +129,30 @@ export async function fetchOrderStatusCounts(token: string) {
   return handleResponse(response, "Failed to fetch order status counts");
 }
 
+export async function fetchOrderMonths(token: string) {
+  const response = await fetch(`${API_URL}/api/orders/months`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to fetch order months");
+}
+
+export async function fetchOrderCategories(token: string) {
+  const response = await fetch(`${API_URL}/api/orders/categories`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to fetch order categories");
+}
+
 export async function fetchOrderById(token: string, id: number | string) {
   const response = await fetch(`${API_URL}/api/orders/local/${id}`, {
     method: "GET",
@@ -251,6 +275,23 @@ export async function updateOrderStatus(token: string, orderId: number, status: 
   });
 
   return handleResponse(response, "Failed to update order status");
+}
+
+export async function updateOrderAddress(
+  token: string,
+  orderId: number,
+  address: { billing?: object; shipping?: object }
+) {
+  const response = await fetch(`${API_URL}/api/orders/${orderId}/address`, {
+    method: "PUT",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(address),
+  });
+
+  return handleResponse(response, "Failed to update order address");
 }
 
 export async function fetchProducts(

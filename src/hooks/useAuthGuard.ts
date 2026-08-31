@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/src/store/hooks";
-import { hydrate, loadAuthFromStorage } from "@/src/store/authSlice";
+import { hydrate, loadAuthFromStorage, refreshProfile } from "@/src/store/authSlice";
 
 export function useAuthGuard() {
   const router = useRouter();
@@ -23,6 +23,13 @@ export function useAuthGuard() {
     setChecked(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    if (token && admin?.id) {
+      dispatch(refreshProfile({ token, id: admin.id }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, admin?.id]);
 
   return { token, admin, profile, ready: checked && !!token };
 }

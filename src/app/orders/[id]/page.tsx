@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
-import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, previewShiprocket, previewTekipost, updateOrderStatus } from "@/src/services/api";
+import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, previewShiprocket, previewTekipost, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
+import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canSendToShiprocket, canSendToTekipost, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
 
 interface Address {
   first_name: string;
@@ -74,10 +75,21 @@ interface OrderDetail {
     total_revenue: string;
     average_order_value: string;
   };
+  meta_data: { id: number; key: string; value: string }[];
 }
 
 export default function OrderDetailPage() {
-  const { token, ready } = useAuthGuard();
+  const { token, ready, profile } = useAuthGuard();
+  const canEditUserDetail = canEditOrderUserDetail(profile);
+  const canEditStatus = canEditOrderStatus(profile);
+  const canShiprocket = canSendToShiprocket(profile);
+  const canTekipost = canSendToTekipost(profile);
+  const canSpeedPost = canViewSpeedPost(profile);
+  const canWeight = canViewOrderWeight(profile);
+  const canNotes = canViewOrderNotes(profile);
+  const canDeleteNote = canDeleteOrderNote(profile);
+  const canView = canViewOrder(profile);
+  const canProfileLink = canViewProfileLink(profile);
   const router = useRouter();
   const params = useParams();
   const orderId = params?.id as string;
@@ -99,6 +111,7 @@ export default function OrderDetailPage() {
   const [isSendingShiprocket, setIsSendingShiprocket] = useState(false);
   const [isFetchingTekipostStatus, setIsFetchingTekipostStatus] = useState(false);
   const [isFetchingShiprocketStatus, setIsFetchingShiprocketStatus] = useState(false);
+  const [orderAction, setOrderAction] = useState("");
   const [notes, setNotes] = useState<OrderNote[]>([]);
   const [isLoadingNotes, setIsLoadingNotes] = useState(false);
   const [newNoteContent, setNewNoteContent] = useState("");
@@ -172,6 +185,13 @@ export default function OrderDetailPage() {
   };
 
   useEffect(() => {
+    if (ready && profile && !canView) {
+      router.push("/orders");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, profile, canView]);
+
+  useEffect(() => {
     if (!ready || !token || !orderId) return;
     loadOrder(token);
     loadNotes(token);
@@ -199,9 +219,11 @@ export default function OrderDetailPage() {
     try {
       setIsSendingTekipost(true);
       const res = await previewTekipost(token, order.id, Number(weight));
-      console.log(`[tekipost] preview payload for order #${order.id}:`, res.payload);
+      console.log(`[tekipost] payload for order #${order.id}:`, res.payload);
+      console.log(`[tekipost] submission response for order #${order.id}:`, res.submission);
       if (res.warnings?.length) console.warn(`[tekipost] preview warnings for order #${order.id}:`, res.warnings);
-      showNotification("TekiPost payload built — check the browser console. Not sent yet (API call is commented out).", "success");
+      showNotification(res.message || `Order #${order.id} sent to TekiPost successfully.`, "success");
+      await loadOrder(token);
     } catch (err: any) {
       showNotification(err.message || "Failed to build TekiPost preview", "error");
     } finally {
@@ -218,9 +240,11 @@ export default function OrderDetailPage() {
     try {
       setIsSendingShiprocket(true);
       const res = await previewShiprocket(token, order.id, Number(weight));
-      console.log(`[shiprocket] preview payload for order #${order.id}:`, res.payload);
+      console.log(`[shiprocket] payload for order #${order.id}:`, res.payload);
+      console.log(`[shiprocket] submission response for order #${order.id}:`, res.submission);
       if (res.warnings?.length) console.warn(`[shiprocket] preview warnings for order #${order.id}:`, res.warnings);
-      showNotification("Shiprocket payload built — check the browser console. Not sent yet (API call is commented out).", "success");
+      showNotification(res.message || `Order #${order.id} sent to Shiprocket successfully.`, "success");
+      await loadOrder(token);
     } catch (err: any) {
       showNotification(err.message || "Failed to build Shiprocket preview", "error");
     } finally {
@@ -256,17 +280,38 @@ export default function OrderDetailPage() {
     }
   };
 
-  const handleUpdateStatus = async () => {
-    if (!token || !order || !selectedStatus) return;
+  // Single Update button for the order: saves the status change (if any) together with any
+  // billing/shipping edits currently open, then re-fetches the order so the page reflects
+  // exactly what's now saved on WordPress/WooCommerce.
+  const handleUpdate = async () => {
+    if (!token || !order) return;
+
+    const addressPayload: { billing?: Address; shipping?: Address } = {};
+    if (isEditingBilling && billingForm) addressPayload.billing = billingForm;
+    if (isEditingShipping && shippingForm) addressPayload.shipping = shippingForm;
+
+    const statusChanged = !!selectedStatus && selectedStatus !== order.status;
+    const hasAddressChanges = !!(addressPayload.billing || addressPayload.shipping);
+
+    if (!statusChanged && !hasAddressChanges) {
+      showNotification("No changes to update.", "error");
+      return;
+    }
+
     try {
       setIsSaving(true);
-      const res = await updateOrderStatus(token, order.id, selectedStatus);
-      if (res.success) {
-        showNotification(`Order #${order.id} status updated to ${selectedStatus}.`, "success");
-        await loadOrder(token);
+      if (statusChanged) {
+        await updateOrderStatus(token, order.id, selectedStatus);
       }
+      if (hasAddressChanges) {
+        await updateOrderAddress(token, order.id, addressPayload);
+      }
+      showNotification(`Order #${order.id} updated successfully.`, "success");
+      setIsEditingBilling(false);
+      setIsEditingShipping(false);
+      await loadOrder(token);
     } catch (err: any) {
-      showNotification(err.message || "Failed to update order status", "error");
+      showNotification(err.message || "Failed to update order", "error");
     } finally {
       setIsSaving(false);
     }
@@ -377,6 +422,10 @@ export default function OrderDetailPage() {
   const itemsSubtotal = order?.line_items.reduce((sum, li) => sum + parseFloat(li.total || "0"), 0) ?? 0;
   const feesTotal = order?.fee_lines.reduce((sum, f) => sum + parseFloat(f.total || "0"), 0) ?? 0;
 
+  const getOrderMeta = (key: string) => order?.meta_data.find((m) => m.key === key)?.value || "";
+  const shiprocketStatus = getOrderMeta("shiprocket_status") === "Sent" ? "Sent" : "Not Sent";
+  const tekipostStatus = getOrderMeta("tekipost_status") === "Sent" ? "Sent" : "Not Sent";
+
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-50 text-gray-900 font-sans overflow-hidden">
       <Header />
@@ -459,22 +508,30 @@ export default function OrderDetailPage() {
 
                       <div>
                         <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Status:</div>
-                        <select
-                          value={selectedStatus}
-                          onChange={(e) => setSelectedStatus(e.target.value)}
-                          className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
-                        >
-                          {statusList.map((s) => (
-                            <option key={s.value} value={s.value}>{s.label}</option>
-                          ))}
-                        </select>
+                        {canEditStatus ? (
+                          <select
+                            value={selectedStatus}
+                            onChange={(e) => setSelectedStatus(e.target.value)}
+                            className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
+                          >
+                            {statusList.map((s) => (
+                              <option key={s.value} value={s.value}>{s.label}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans">
+                            {statusList.find((s) => s.value === order.status)?.label || order.status}
+                          </div>
+                        )}
                       </div>
 
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[10px] font-semibold text-gray-500 uppercase font-sans">Customer:</span>
                           <span className="text-[10px] font-sans space-x-2">
-                            <a href={`/users/${order.customer_id}`} className="text-[#E31E24] hover:underline">Profile →</a>
+                            {canProfileLink && (
+                              <a href={`/users/${order.customer_id}`} className="text-[#E31E24] hover:underline">Profile →</a>
+                            )}
                             <a href={`/orders?customer=${order.customer_id}`} className="text-[#E31E24] hover:underline">View other orders →</a>
                           </span>
                         </div>
@@ -483,26 +540,32 @@ export default function OrderDetailPage() {
                         </div>
                       </div>
 
-                      <div>
-                        <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Weight (kg) :</div>
-                        <input
-                          type="text"
-                          value={isLoadingWeight ? "Calculating…" : weight}
-                          disabled={isLoadingWeight}
-                          onChange={(e) => setWeight(e.target.value)}
-                          className="w-full bg-white border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] disabled:bg-gray-50 disabled:text-gray-400"
-                        />
-                      </div>
+                      {canWeight && (
+                        <div>
+                          <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Weight (kg) :</div>
+                          <input
+                            type="text"
+                            value={isLoadingWeight ? "Calculating…" : weight}
+                            disabled={isLoadingWeight}
+                            onChange={(e) => setWeight(e.target.value)}
+                            className="w-full bg-white border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] disabled:bg-gray-50 disabled:text-gray-400"
+                          />
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-2 pt-1">
-                        <button
-                          onClick={handleSendToShiprocket}
-                          disabled={isSendingShiprocket || isLoadingWeight}
-                          className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
-                        >
-                          {isSendingShiprocket ? "Building…" : "Send to Shiprocket"}
-                        </button>
-                        <span className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] px-2.5 py-1.5 rounded font-sans">Status: Not Sent</span>
+                        {canShiprocket && (
+                          <button
+                            onClick={handleSendToShiprocket}
+                            disabled={isSendingShiprocket || isLoadingWeight}
+                            className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
+                          >
+                            {isSendingShiprocket ? "Building…" : "Send to Shiprocket"}
+                          </button>
+                        )}
+                        <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans ${shiprocketStatus === "Sent" ? "text-emerald-700 border-emerald-600" : "text-[#E31E24] border-[#E31E24]"}`}>
+                          Status: {shiprocketStatus}
+                        </span>
                       </div>
 
                       <div className="pt-2 border-t border-gray-100 space-y-1.5">
@@ -535,35 +598,39 @@ export default function OrderDetailPage() {
                         </a>
                       </div>
 
-                      <div className="mt-1 bg-gray-50 border border-gray-200 rounded p-3 space-y-2">
-                        <div className="text-xs font-bold text-gray-600 font-sans">Speed Post Details</div>
-                        <div>
-                          <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Speed Post:</div>
-                          <select disabled className="w-full bg-gray-100 border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-400 font-sans cursor-not-allowed">
-                            <option>No</option>
-                          </select>
+                      {canSpeedPost && (
+                        <div className="mt-1 bg-gray-50 border border-gray-200 rounded p-3 space-y-2">
+                          <div className="text-xs font-bold text-gray-600 font-sans">Speed Post Details</div>
+                          <div>
+                            <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Speed Post:</div>
+                            <select disabled className="w-full bg-gray-100 border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-400 font-sans cursor-not-allowed">
+                              <option>No</option>
+                            </select>
+                          </div>
+                          <div className="text-xs font-sans">
+                            <span className="text-gray-500">Speed Post Tracking URL: </span>
+                            <a href="https://www.17track.net/en/" target="_blank" rel="noopener noreferrer" className="text-[#E31E24] hover:underline">https://www.17track.net/en/</a>
+                          </div>
                         </div>
-                        <div className="text-xs font-sans">
-                          <span className="text-gray-500">Speed Post Tracking URL: </span>
-                          <a href="https://www.17track.net/en/" target="_blank" rel="noopener noreferrer" className="text-[#E31E24] hover:underline">https://www.17track.net/en/</a>
-                        </div>
-                      </div>
+                      )}
                     </div>
 
                     {/* Billing */}
                     <div className="p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Billing</h4>
-                        <button
-                          onClick={() => {
-                            if (!isEditingBilling) setBillingForm({ ...order.billing });
-                            setIsEditingBilling(!isEditingBilling);
-                          }}
-                          className="text-gray-400 hover:text-[#E31E24]"
-                          title="Edit billing address"
-                        >
-                          <PencilIcon />
-                        </button>
+                        {canEditUserDetail && (
+                          <button
+                            onClick={() => {
+                              if (!isEditingBilling) setBillingForm({ ...order.billing });
+                              setIsEditingBilling(!isEditingBilling);
+                            }}
+                            className="text-gray-400 hover:text-[#E31E24]"
+                            title="Edit billing address"
+                          >
+                            <PencilIcon />
+                          </button>
+                        )}
                       </div>
 
                       {isEditingBilling && billingForm ? (
@@ -574,14 +641,18 @@ export default function OrderDetailPage() {
 
                       <div className="pt-2 border-t border-gray-100 space-y-2">
                         <div className="flex items-center gap-2">
-                          <button
-                            onClick={handleSendToTekipost}
-                            disabled={isSendingTekipost || isLoadingWeight}
-                            className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
-                          >
-                            {isSendingTekipost ? "Building…" : "Send to Tekipost"}
-                          </button>
-                          <span className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] px-2.5 py-1.5 rounded font-sans">Status: Not Sent</span>
+                          {canTekipost && (
+                            <button
+                              onClick={handleSendToTekipost}
+                              disabled={isSendingTekipost || isLoadingWeight}
+                              className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
+                            >
+                              {isSendingTekipost ? "Building…" : "Send to Tekipost"}
+                            </button>
+                          )}
+                          <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans ${tekipostStatus === "Sent" ? "text-emerald-700 border-emerald-600" : "text-[#E31E24] border-[#E31E24]"}`}>
+                            Status: {tekipostStatus}
+                          </span>
                         </div>
                         <div className="text-xs font-sans"><span className="text-gray-500">Tracking No. :</span></div>
                         <div className="text-xs font-sans"><span className="text-gray-500">Courier Name:</span></div>
@@ -604,16 +675,18 @@ export default function OrderDetailPage() {
                     <div className="p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Shipping</h4>
-                        <button
-                          onClick={() => {
-                            if (!isEditingShipping) setShippingForm({ ...order.shipping });
-                            setIsEditingShipping(!isEditingShipping);
-                          }}
-                          className="text-gray-400 hover:text-[#E31E24]"
-                          title="Edit shipping address"
-                        >
-                          <PencilIcon />
-                        </button>
+                        {canEditUserDetail && (
+                          <button
+                            onClick={() => {
+                              if (!isEditingShipping) setShippingForm({ ...order.shipping });
+                              setIsEditingShipping(!isEditingShipping);
+                            }}
+                            className="text-gray-400 hover:text-[#E31E24]"
+                            title="Edit shipping address"
+                          >
+                            <PencilIcon />
+                          </button>
+                        )}
                       </div>
 
                       {isEditingShipping && shippingForm ? (
@@ -695,6 +768,56 @@ export default function OrderDetailPage() {
 
                   {/* Right column */}
                   <div className="space-y-4">
+                    {/* Order actions */}
+                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                      <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
+                        <h4 className="text-xs font-bold text-gray-700 font-sans">Order actions</h4>
+                        <div className="flex items-center gap-1 text-gray-400">
+                          <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path d="M10 6l-5 5h10l-5-5z" /></svg>
+                          <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path d="M10 14l5-5H5l5 5z" /></svg>
+                        </div>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={orderAction}
+                            onChange={(e) => setOrderAction(e.target.value)}
+                            className="flex-1 bg-white border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
+                          >
+                            <option value="">Choose an action...</option>
+                            <option value="send_order_details">Send order details to customer</option>
+                            <option value="resend_order_notification">Resend new order notification</option>
+                            <option value="regenerate_download_permissions">Regenerate download permissions</option>
+                          </select>
+                          <button
+                            type="button"
+                            disabled
+                            title="Not available yet"
+                            className="shrink-0 w-8 h-8 flex items-center justify-center border border-gray-250 rounded text-gray-300 cursor-not-allowed"
+                          >
+                            →
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                          <button
+                            type="button"
+                            disabled
+                            title="Not available yet"
+                            className="text-[11px] font-semibold text-gray-300 font-sans cursor-not-allowed"
+                          >
+                            Move to Trash
+                          </button>
+                          <button
+                            onClick={handleUpdate}
+                            disabled={isSaving}
+                            className="text-xs font-bold text-white bg-[#2271b1] hover:bg-[#135e96] disabled:bg-gray-300 px-4 py-2 rounded transition-colors font-sans"
+                          >
+                            {isSaving ? "Updating…" : "Update"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-2">
                       <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Customer history</h4>
                       <div className="flex justify-between text-xs font-sans">
@@ -713,77 +836,83 @@ export default function OrderDetailPage() {
 
 
 
-                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-3">
-                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Order notes</h4>
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1 block">Add note</label>
-                        <textarea
-                          value={newNoteContent}
-                          onChange={(e) => setNewNoteContent(e.target.value)}
-                          placeholder="Add note"
-                          className="w-full bg-white border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] resize-none"
-                          rows={3}
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={newNoteType}
-                          onChange={(e) => setNewNoteType(e.target.value)}
-                          className="flex-1 bg-white border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
-                        >
-                          <option value="">Private note</option>
-                          <option value="customer">Note to customer</option>
-                        </select>
-                        <button
-                          onClick={handleAddNote}
-                          disabled={isAddingNote || !newNoteContent.trim()}
-                          className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] hover:bg-red-50 disabled:text-gray-300 disabled:border-gray-200 disabled:hover:bg-transparent px-3 py-1.5 rounded transition-colors font-sans shrink-0"
-                        >
-                          {isAddingNote ? "Adding…" : "Add"}
-                        </button>
-                      </div>
+                    {canNotes && (
+                      <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-3">
+                        <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Order notes</h4>
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1 block">Add note</label>
+                          <textarea
+                            value={newNoteContent}
+                            onChange={(e) => setNewNoteContent(e.target.value)}
+                            placeholder="Add note"
+                            className="w-full bg-white border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] resize-none"
+                            rows={3}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={newNoteType}
+                            onChange={(e) => setNewNoteType(e.target.value)}
+                            className="flex-1 bg-white border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
+                          >
+                            <option value="">Private note</option>
+                            <option value="customer">Note to customer</option>
+                          </select>
+                          <button
+                            onClick={handleAddNote}
+                            disabled={isAddingNote || !newNoteContent.trim()}
+                            className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] hover:bg-red-50 disabled:text-gray-300 disabled:border-gray-200 disabled:hover:bg-transparent px-3 py-1.5 rounded transition-colors font-sans shrink-0"
+                          >
+                            {isAddingNote ? "Adding…" : "Add"}
+                          </button>
+                        </div>
 
-                      <div className="pt-2 border-t border-gray-100 space-y-2 max-h-96 overflow-y-auto">
-                        {isLoadingNotes ? (
-                          <div className="text-xs text-gray-400 font-sans">Loading notes…</div>
-                        ) : notes.length === 0 ? (
-                          <div className="text-xs text-gray-400 font-sans">No order notes available yet.</div>
-                        ) : (
-                          notes.map((note) => (
-                            <div
-                              key={note.id}
-                              className={`rounded px-3 py-2 text-xs font-sans ${
-                                note.is_customer_note
-                                  ? "bg-blue-50 border border-blue-100"
-                                  : note.is_system_note
-                                  ? "bg-purple-50 border border-purple-100"
-                                  : "bg-gray-50 border border-gray-150"
-                              }`}
-                            >
-                              <div className="text-gray-800 whitespace-pre-wrap">{note.content}</div>
-                              <div className="mt-1.5 text-[10px] text-gray-500">
-                                {new Date(note.date).toLocaleString("en-US", {
-                                  month: "long",
-                                  day: "numeric",
-                                  year: "numeric",
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                  hour12: true,
-                                })}
-                                {" — "}
-                                <button
-                                  onClick={() => handleDeleteNote(note.id)}
-                                  disabled={deletingNoteId === note.id}
-                                  className="text-[#E31E24] hover:underline font-semibold disabled:text-gray-300"
-                                >
-                                  {deletingNoteId === note.id ? "Deleting…" : "Delete note"}
-                                </button>
+                        <div className="pt-2 border-t border-gray-100 space-y-2 max-h-96 overflow-y-auto">
+                          {isLoadingNotes ? (
+                            <div className="text-xs text-gray-400 font-sans">Loading notes…</div>
+                          ) : notes.length === 0 ? (
+                            <div className="text-xs text-gray-400 font-sans">No order notes available yet.</div>
+                          ) : (
+                            notes.map((note) => (
+                              <div
+                                key={note.id}
+                                className={`rounded px-3 py-2 text-xs font-sans ${
+                                  note.is_customer_note
+                                    ? "bg-blue-50 border border-blue-100"
+                                    : note.is_system_note
+                                    ? "bg-purple-50 border border-purple-100"
+                                    : "bg-gray-50 border border-gray-150"
+                                }`}
+                              >
+                                <div className="text-gray-800 whitespace-pre-wrap">{note.content}</div>
+                                <div className="mt-1.5 text-[10px] text-gray-500">
+                                  {new Date(note.date).toLocaleString("en-US", {
+                                    month: "long",
+                                    day: "numeric",
+                                    year: "numeric",
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                    hour12: true,
+                                  })}
+                                  {canDeleteNote && (
+                                    <>
+                                      {" — "}
+                                      <button
+                                        onClick={() => handleDeleteNote(note.id)}
+                                        disabled={deletingNoteId === note.id}
+                                        className="text-[#E31E24] hover:underline font-semibold disabled:text-gray-300"
+                                      >
+                                        {deletingNoteId === note.id ? "Deleting…" : "Delete note"}
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))
-                        )}
+                            ))
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-2">
                       <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Order attribution</h4>

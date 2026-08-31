@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
-import { fetchOrders, fetchOrderStatusCounts, updateOrderStatus } from "@/src/services/api";
+import { fetchOrderCategories, fetchOrderMonths, fetchOrders, fetchOrderStatusCounts, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
+import { canViewOrder, canViewOrderStatus } from "@/src/lib/permissions";
 
 interface Order {
   id: number;
@@ -33,8 +34,9 @@ interface Order {
 }
 
 export default function OrdersPage() {
-  const { token, ready } = useAuthGuard();
+  const { token, ready, profile } = useAuthGuard();
   const router = useRouter();
+  const canView = canViewOrder(profile);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -50,8 +52,14 @@ export default function OrdersPage() {
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [categoryQuery, setCategoryQuery] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("all");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [categorySearchText, setCategorySearchText] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
+  const [monthOptions, setMonthOptions] = useState<{ value: string; label: string }[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState("0");
 
   // Selected status action per row
   const [rowStatusActions, setRowStatusActions] = useState<Record<number, string>>({});
@@ -121,31 +129,84 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!ready || !token) return;
-    loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, categoryQuery, paymentMethod);
+    loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), paymentMethod);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, token, currentPage, selectedStatus, paymentMethod]);
 
   useEffect(() => {
     if (!ready || !token) return;
     loadStatusCounts(token);
+    fetchOrderCategories(token).then((res) => {
+      if (res.success) setCategoryOptions(res.categories || []);
+    }).catch(() => {});
+    fetchOrderMonths(token).then((res) => {
+      if (res.success) setMonthOptions(res.months || []);
+    }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, token]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
+        setIsCategoryDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Converts a "YYYYMM" month value into its first/last calendar day, for the existing
+  // start_date/end_date range filter (no separate backend month param needed).
+  const monthToDateRange = (month: string): { start: string; end: string } => {
+    if (!month || month === "0") return { start: "", end: "" };
+    const year = parseInt(month.slice(0, 4), 10);
+    const mon = parseInt(month.slice(4, 6), 10);
+    const start = `${year}-${String(mon).padStart(2, "0")}-01`;
+    const lastDay = new Date(year, mon, 0).getDate();
+    const end = `${year}-${String(mon).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    return { start, end };
+  };
+
+  const handleApplyMonthFilter = () => {
+    const { start, end } = monthToDateRange(selectedMonth);
+    setStartDate(start);
+    setEndDate(end);
+    if (!token) return;
+    setCurrentPage(1);
+    loadData(token, 1, selectedStatus, searchQuery, start, end, selectedCategories.join(","), paymentMethod);
+  };
+
+  const toggleCategory = (category: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category]
+    );
+  };
+
+  const removeCategory = (category: string) => {
+    setSelectedCategories((prev) => prev.filter((c) => c !== category));
+  };
+
+  const filteredCategoryOptions = categoryOptions.filter((c) =>
+    c.toLowerCase().includes(categorySearchText.toLowerCase())
+  );
 
   const triggerApplyFilters = () => {
     if (!token) return;
     setCurrentPage(1);
-    loadData(token, 1, selectedStatus, searchQuery, startDate, endDate, categoryQuery, paymentMethod);
+    loadData(token, 1, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), paymentMethod);
   };
 
   const clearFilters = () => {
     setStartDate("");
     setEndDate("");
-    setCategoryQuery("");
-    setPaymentMethod("all");
+    setSelectedMonth("0");
+    setSelectedCategories([]);
+    setCategorySearchText("");
+    setPaymentMethod("");
     setSearchQuery("");
     if (!token) return;
     setCurrentPage(1);
-    loadData(token, 1, selectedStatus, "", "", "", "", "all");
+    loadData(token, 1, selectedStatus, "", "", "", "", "");
   };
 
   const handleStatusChangeSubmit = async (orderId: number) => {
@@ -160,7 +221,7 @@ export default function OrdersPage() {
       if (res.success) {
         showNotification(`Order #${orderId} status changed to ${newStatus} successfully!`, "success");
         // Reload page data and refresh the status tab counts
-        await loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, categoryQuery, paymentMethod);
+        await loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), paymentMethod);
         await loadStatusCounts(token);
       }
     } catch (err: any) {
@@ -198,11 +259,11 @@ export default function OrdersPage() {
     return "bg-slate-50 border-slate-200 text-slate-800";
   };
 
-  // Tabs: "All" plus every status that actually has orders, in canonical order
+  // Tabs: "All" plus every status that actually has orders and is permitted (wc-<status> in access_orders), in canonical order
   const statusTabs = [
     { label: "All", value: "all", count: totalOrdersCount },
     ...statusList
-      .filter((s) => (statusCounts[s.value] || 0) > 0)
+      .filter((s) => (statusCounts[s.value] || 0) > 0 && canViewOrderStatus(profile, s.value))
       .map((s) => ({ label: s.label, value: s.value, count: statusCounts[s.value] })),
   ];
 
@@ -271,7 +332,25 @@ export default function OrdersPage() {
             {/* Row 1: Search & Simple dropdowns */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
 
-           
+              {/* Filter by Date (month) */}
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="bg-gray-50 border border-gray-250 rounded px-2.5 py-1 text-xs text-gray-700 font-sans"
+                >
+                  <option value="0">All dates</option>
+                  {monthOptions.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleApplyMonthFilter}
+                  className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] hover:bg-red-50 px-3 py-1 rounded transition-colors font-sans whitespace-nowrap"
+                >
+                  Filter
+                </button>
+              </div>
 
               {/* Top-right Search input */}
               <div className="flex items-center gap-2 w-full md:w-auto max-w-md">
@@ -341,15 +420,62 @@ export default function OrdersPage() {
               {/* Category Filter */}
               <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5">
                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider font-sans">Category Filter</span>
+                {selectedCategories.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {selectedCategories.map((cat) => (
+                      <span
+                        key={cat}
+                        className="inline-flex items-center gap-1 bg-gray-200 text-gray-700 text-[10px] font-sans px-2 py-1 rounded"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => removeCategory(cat)}
+                          className="text-gray-500 hover:text-[#E31E24] font-bold leading-none"
+                        >
+                          ×
+                        </button>
+                        {cat}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="Filter by Category"
-                    value={categoryQuery}
-                    onChange={(e) => setCategoryQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && triggerApplyFilters()}
-                    className="w-full bg-white border border-gray-250 px-2.5 py-1 text-xs rounded outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans"
-                  />
+                  <div className="relative w-full" ref={categoryDropdownRef}>
+                    <input
+                      type="text"
+                      placeholder="Filter by Category"
+                      value={categorySearchText}
+                      onChange={(e) => setCategorySearchText(e.target.value)}
+                      onFocus={() => setIsCategoryDropdownOpen(true)}
+                      className="w-full bg-white border border-gray-250 px-2.5 py-1 text-xs rounded outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans"
+                    />
+                    {isCategoryDropdownOpen && (
+                      <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-[#E31E24] rounded shadow-lg">
+                        {filteredCategoryOptions.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-gray-400 font-sans">No categories found.</div>
+                        ) : (
+                          filteredCategoryOptions.map((cat) => {
+                            const isSelected = selectedCategories.includes(cat);
+                            return (
+                              <button
+                                key={cat}
+                                type="button"
+                                onClick={() => toggleCategory(cat)}
+                                className={`w-full text-left px-3 py-1.5 text-xs font-sans transition-colors flex items-center gap-2 ${
+                                  isSelected
+                                    ? "bg-red-50 text-[#E31E24] font-semibold"
+                                    : "text-gray-700 hover:bg-gray-100"
+                                }`}
+                              >
+                                <span className={`w-3 h-3 rounded-sm border shrink-0 ${isSelected ? "bg-[#E31E24] border-[#E31E24]" : "border-gray-300"}`} />
+                                {cat}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={triggerApplyFilters}
                     className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] hover:bg-red-50 px-3 py-1 rounded transition-colors font-sans whitespace-nowrap"
@@ -357,6 +483,26 @@ export default function OrdersPage() {
                     Filter
                   </button>
                 </div>
+              </div>
+
+              {/* Payment Type Filter */}
+              <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider font-sans">Payment Type Filter</span>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full bg-white border border-gray-250 px-2.5 py-1 text-xs rounded outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans"
+                >
+                  <option value="">Payment Type (All)</option>
+                  <option value="cod">Cash on Delivery (COD)</option>
+                  <option value="prepaid">Prepaid</option>
+                </select>
+                <button
+                  onClick={triggerApplyFilters}
+                  className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] hover:bg-red-50 px-3 py-1 rounded transition-colors font-sans whitespace-nowrap self-start"
+                >
+                  Filter
+                </button>
               </div>
 
           
@@ -383,9 +529,6 @@ export default function OrdersPage() {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider">
-                      <th className="py-3 px-4 w-4">
-                        <input type="checkbox" className="rounded" />
-                      </th>
                       <th className="py-3.5 px-4 font-bold">Order</th>
                       <th className="py-3.5 px-4 font-bold">Date</th>
                       <th className="py-3.5 px-4 font-bold">Status</th>
@@ -400,7 +543,7 @@ export default function OrdersPage() {
                   <tbody className="divide-y divide-gray-100">
                     {orders.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="py-12 text-center text-gray-400">
+                        <td colSpan={9} className="py-12 text-center text-gray-400">
                           <div className="flex flex-col items-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-300">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z" />
@@ -413,12 +556,9 @@ export default function OrdersPage() {
                       orders.map((order) => (
                         <tr
                           key={order.id}
-                          onClick={() => router.push(`/orders/${order.id}`)}
-                          className="hover:bg-gray-50/50 transition-colors cursor-pointer"
+                          onClick={canView ? () => router.push(`/orders/${order.id}`) : undefined}
+                          className={`hover:bg-gray-50/50 transition-colors ${canView ? "cursor-pointer" : ""}`}
                         >
-                          <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
-                            <input type="checkbox" className="rounded" />
-                          </td>
                           <td className="py-3 px-4 font-sans text-[#E31E24] font-bold">
                             #{order.id} {order.billing.first_name} {order.billing.last_name}
                           </td>
