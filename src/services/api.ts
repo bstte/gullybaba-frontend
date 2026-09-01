@@ -396,3 +396,16 @@ export async function fetchAbandonedCarts(
   return handleResponse(response, "Failed to fetch abandoned carts");
 }
 
+export async function updateAbandonedCartNote(token: string, id: number | string, notes: string) {
+  const response = await fetch(`${API_URL}/api/abandoned-carts/${id}/notes`, {
+    method: "PUT",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ notes }),
+  });
+
+  return handleResponse(response, "Failed to update abandoned cart note");
+}
+

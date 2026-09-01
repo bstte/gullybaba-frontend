@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
-import { fetchAbandonedCarts } from "@/src/services/api";
+import { fetchAbandonedCarts, updateAbandonedCartNote } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
 
 interface AbandonedCart {
@@ -19,6 +19,8 @@ export default function AbandonedCartsPage() {
   const [carts, setCarts] = useState<AbandonedCart[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
 
   // Pagination & Filtering state
   const [currentPage, setCurrentPage] = useState(1);
@@ -48,6 +50,9 @@ export default function AbandonedCartsPage() {
       );
       if (res.success) {
         setCarts(res.carts);
+        setNoteDrafts(
+          Object.fromEntries(res.carts.map((cart: AbandonedCart) => [cart.id, cart.notes === "—" ? "" : cart.notes]))
+        );
         setTotalPages(res.pagination.totalPages || 1);
         setTotalItems(res.pagination.total || 0);
       }
@@ -78,6 +83,23 @@ export default function AbandonedCartsPage() {
     loadData(token, 1, "", "all");
   };
 
+  const handleSaveNote = async (cartId: string) => {
+    if (!token) return;
+    const draft = noteDrafts[cartId] ?? "";
+    try {
+      setSavingNoteId(cartId);
+      const res = await updateAbandonedCartNote(token, cartId, draft);
+      if (res.success) {
+        setCarts((prev) => prev.map((c) => (c.id === cartId ? { ...c, notes: draft || "—" } : c)));
+        showNotification("Note saved", "success");
+      }
+    } catch (err: any) {
+      showNotification(err.message || "Failed to save note", "error");
+    } finally {
+      setSavingNoteId(null);
+    }
+  };
+
   const showNotification = (message: string, type: "success" | "error") => {
     setNotification({ message, type });
     setTimeout(() => {
@@ -97,14 +119,13 @@ export default function AbandonedCartsPage() {
 
         {/* Dynamic page content */}
         <main className="flex-1 flex flex-col bg-gray-50 overflow-hidden relative">
-          
+
           {/* Toast Notification */}
           {notification && (
-            <div className={`absolute top-4 right-4 z-50 px-4 py-3 rounded shadow-md border text-xs font-medium flex items-center gap-2 animate-bounce ${
-              notification.type === "success" 
-                ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
+            <div className={`absolute top-4 right-4 z-50 px-4 py-3 rounded shadow-md border text-xs font-medium flex items-center gap-2 animate-bounce ${notification.type === "success"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
                 : "bg-red-50 border-red-200 text-red-800"
-            }`}>
+              }`}>
               <span className="w-1.5 h-1.5 bg-current rounded-full"></span>
               <span>{notification.message}</span>
             </div>
@@ -182,15 +203,16 @@ export default function AbandonedCartsPage() {
                     </div>
                   </div>
                 )}
-                
+
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider">
-                      <th className="py-3.5 px-4 font-bold w-20">Cart ID</th>
-                      <th className="py-3.5 px-4 font-bold">Customer Phone</th>
-                      <th className="py-3.5 px-4 font-bold">Product Type</th>
-                      <th className="py-3.5 px-4 font-bold">Follow-up Notes</th>
-                      <th className="py-3.5 px-4 font-bold">Abandoned Date & Time</th>
+                      <th className="py-3.5 px-4 font-bold w-20">ID</th>
+                      <th className="py-3.5 px-4 font-bold">Phone</th>
+                      <th className="py-3.5 px-4 font-bold">Product</th>
+                      <th className="py-3.5 px-4 font-bold">Created At</th>
+
+                      <th className="py-3.5 px-4 font-bold">Notes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -215,17 +237,14 @@ export default function AbandonedCartsPage() {
                             {cart.phone}
                           </td>
                           <td className="py-3 px-4">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold font-sans border ${
-                              cart.product.toLowerCase() === "book" 
-                                ? "bg-blue-50 text-blue-700 border-blue-100" 
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold font-sans border ${cart.product.toLowerCase() === "book"
+                                ? "bg-blue-50 text-blue-700 border-blue-100"
                                 : "bg-teal-50 text-teal-700 border-teal-100"
-                            }`}>
+                              }`}>
                               {cart.product}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-gray-600 font-sans">
-                            {cart.notes}
-                          </td>
+                     
                           <td className="py-3 px-4 text-gray-400 font-sans">
                             {new Date(cart.created_at).toLocaleString(undefined, {
                               year: "numeric",
@@ -234,6 +253,26 @@ export default function AbandonedCartsPage() {
                               hour: "2-digit",
                               minute: "2-digit"
                             })}
+                          </td>
+                               <td className="py-3 px-4 text-gray-600 font-sans">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={noteDrafts[cart.id] ?? ""}
+                                onChange={(e) =>
+                                  setNoteDrafts((prev) => ({ ...prev, [cart.id]: e.target.value }))
+                                }
+                                placeholder="Add a note..."
+                                className="w-40 px-2 py-1 bg-gray-50 border border-gray-250 rounded text-xs focus:bg-white focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] outline-none font-sans"
+                              />
+                              <button
+                                onClick={() => handleSaveNote(cart.id)}
+                                disabled={savingNoteId === cart.id}
+                                className="text-xs font-semibold text-white bg-[#E31E24] hover:bg-red-700 disabled:opacity-50 px-3 py-1 rounded shadow-xs transition-colors font-sans whitespace-nowrap"
+                              >
+                                {savingNoteId === cart.id ? "Saving..." : "Save"}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -249,7 +288,7 @@ export default function AbandonedCartsPage() {
             <div className="text-xs text-gray-500 font-sans font-medium">
               Showing <span className="font-semibold text-gray-900">{carts.length}</span> of <span className="font-semibold text-gray-900">{totalItems}</span> abandoned carts
             </div>
-            
+
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
@@ -258,7 +297,7 @@ export default function AbandonedCartsPage() {
               >
                 Previous
               </button>
-              
+
               <span className="text-xs text-gray-600 font-medium font-sans px-2">
                 Page <strong className="text-gray-900 font-bold">{currentPage}</strong> of <strong className="text-gray-900 font-bold">{totalPages}</strong>
               </span>
