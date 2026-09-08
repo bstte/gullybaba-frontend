@@ -409,3 +409,41 @@ export async function updateAbandonedCartNote(token: string, id: number | string
   return handleResponse(response, "Failed to update abandoned cart note");
 }
 
+export async function fetchWcAbandonedCarts(
+  token: string,
+  page = 1,
+  limit = 20,
+  search = "",
+  status = ""
+) {
+  const queryParams = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+    search,
+    status
+  });
+
+  const response = await fetch(`${API_URL}/api/wc-abandoned-carts?${queryParams.toString()}`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to fetch WooCommerce abandoned carts");
+}
+
+export async function updateWcAbandonedCartNote(token: string, id: number | string, notes: string) {
+  const response = await fetch(`${API_URL}/api/wc-abandoned-carts/${id}/notes`, {
+    method: "PUT",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ notes }),
+  });
+
+  return handleResponse(response, "Failed to update WooCommerce abandoned cart note");
+}
+
