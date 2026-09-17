@@ -42,6 +42,22 @@ interface FeeLine {
   total: string;
 }
 
+interface ShippingLine {
+  id: number;
+  method_title: string;
+  method_id: string;
+  instance_id: string;
+  total: string;
+  total_tax: string;
+}
+
+interface CouponLine {
+  id: number;
+  code: string;
+  discount: string;
+  discount_tax: string;
+}
+
 interface OrderNote {
   id: number;
   content: string;
@@ -58,6 +74,8 @@ interface OrderDetail {
   date_created: string;
   total: string;
   shipping_total: string;
+  discount_total?: string;
+  shipping_tax?: string;
   customer_id: number;
   billing: Address;
   shipping: Address;
@@ -67,6 +85,8 @@ interface OrderDetail {
   customer_note: string;
   line_items: LineItem[];
   fee_lines: FeeLine[];
+  shipping_lines?: ShippingLine[];
+  coupon_lines?: CouponLine[];
   attribution: {
     origin: string;
     device_type: string;
@@ -164,6 +184,7 @@ export default function OrderDetailPage() {
         setNotes((prev) => [res.note, ...prev]);
         setNewNoteContent("");
         setNewNoteType("");
+        showNotification("Order note added and synced successfully.", "success");
       }
     } catch (err: any) {
       showNotification(err.message || "Failed to add order note", "error");
@@ -179,6 +200,7 @@ export default function OrderDetailPage() {
       const res = await deleteOrderNote(token, order.id, noteId);
       if (res.success) {
         setNotes((prev) => prev.filter((n) => n.id !== noteId));
+        showNotification("Order note deleted successfully.", "success");
       }
     } catch (err: any) {
       showNotification(err.message || "Failed to delete order note", "error");
@@ -424,6 +446,12 @@ export default function OrderDetailPage() {
 
   const itemsSubtotal = order?.line_items.reduce((sum, li) => sum + parseFloat(li.total || "0"), 0) ?? 0;
   const feesTotal = order?.fee_lines.reduce((sum, f) => sum + parseFloat(f.total || "0"), 0) ?? 0;
+  const shippingTotal = order?.shipping_lines && order.shipping_lines.length > 0
+    ? order.shipping_lines.reduce((sum, s) => sum + parseFloat(s.total || "0"), 0)
+    : parseFloat(order?.shipping_total || "0");
+  const discountTotal = order?.coupon_lines && order.coupon_lines.length > 0
+    ? order.coupon_lines.reduce((sum, c) => sum + parseFloat(c.discount || "0"), 0)
+    : parseFloat(order?.discount_total || "0");
 
   const getOrderMeta = (key: string) => order?.meta_data.find((m) => m.key === key)?.value || "";
   const shiprocketStatus = getOrderMeta("shiprocket_status") === "Sent" ? "Sent" : "Not Sent";
@@ -698,6 +726,24 @@ export default function OrderDetailPage() {
                             renderAddress(order.shipping, false)
                           )}
 
+                          {/* Shipping Method Details */}
+                          {order.shipping_lines && order.shipping_lines.length > 0 && (
+                            <div className="pt-2.5 border-t border-gray-100 space-y-1.5">
+                              <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans">Shipping Method</div>
+                              {order.shipping_lines.map((s) => (
+                                <div key={s.id} className="text-xs font-sans text-gray-800 flex items-center justify-between bg-gray-50 rounded px-2.5 py-1.5 border border-gray-100">
+                                  <div className="flex items-center gap-1.5">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-gray-500 shrink-0">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.25V3.75A1.125 1.125 0 0013.125 2.625h-9.75A1.125 1.125 0 002.25 3.75v10.5" />
+                                    </svg>
+                                    <span className="font-medium text-gray-900">{s.method_title || "Shipping"}</span>
+                                  </div>
+                                  <span className="font-semibold text-gray-700">{order.currency_symbol}{parseFloat(s.total || "0").toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
                           {order.customer_note && (
                             <div className="pt-3 border-t border-gray-100 text-xs font-sans">
                               <div className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Customer provided note</div>
@@ -773,10 +819,29 @@ export default function OrderDetailPage() {
                                 </tr>
                               );
                             })}
+                            {/* Fee lines */}
                             {order.fee_lines.map((f) => (
-                              <tr key={f.id}>
-                                <td className="py-2.5 px-4 font-sans text-gray-500" colSpan={5}>{f.name}</td>
-                                <td className="py-2.5 px-4 font-sans text-gray-700 text-right">{order.currency_symbol}{parseFloat(f.total).toFixed(2)}</td>
+                              <tr key={f.id} className="bg-gray-50/40">
+                                <td className="py-2.5 px-4 font-sans text-gray-700" colSpan={5}>
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-block px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-50 text-amber-700 border border-amber-200">Fee</span>
+                                    <span>{f.name}</span>
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-4 font-sans text-gray-700 text-right font-medium">{order.currency_symbol}{parseFloat(f.total).toFixed(2)}</td>
+                              </tr>
+                            ))}
+
+                            {/* Shipping lines */}
+                            {order.shipping_lines?.map((s) => (
+                              <tr key={s.id} className="bg-gray-50/40">
+                                <td className="py-2.5 px-4 font-sans text-gray-700" colSpan={5}>
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-block px-1.5 py-0.5 text-[10px] font-semibold rounded bg-blue-50 text-blue-700 border border-blue-200">Shipping</span>
+                                    <span>{s.method_title || "Shipping"}</span>
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-4 font-sans text-gray-700 text-right font-medium">{order.currency_symbol}{parseFloat(s.total || "0").toFixed(2)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -785,10 +850,28 @@ export default function OrderDetailPage() {
                               <td colSpan={5} className="py-2 px-4 text-right text-gray-500 font-sans">Items subtotal</td>
                               <td className="py-2 px-4 text-right text-gray-700 font-sans">{order.currency_symbol}{itemsSubtotal.toFixed(2)}</td>
                             </tr>
-                            <tr>
-                              <td colSpan={5} className="py-2 px-4 text-right text-gray-500 font-sans">Fees</td>
-                              <td className="py-2 px-4 text-right text-gray-700 font-sans">{order.currency_symbol}{feesTotal.toFixed(2)}</td>
-                            </tr>
+                            {((order.shipping_lines && order.shipping_lines.length > 0) || shippingTotal > 0) && (
+                              <tr>
+                                <td colSpan={5} className="py-2 px-4 text-right text-gray-500 font-sans">
+                                  Shipping {order.shipping_lines && order.shipping_lines.length > 0 ? `(${order.shipping_lines.map((s) => s.method_title).filter(Boolean).join(", ")})` : ""}
+                                </td>
+                                <td className="py-2 px-4 text-right text-gray-700 font-sans">{order.currency_symbol}{shippingTotal.toFixed(2)}</td>
+                              </tr>
+                            )}
+                            {order.fee_lines.length > 0 && (
+                              <tr>
+                                <td colSpan={5} className="py-2 px-4 text-right text-gray-500 font-sans">Fees</td>
+                                <td className="py-2 px-4 text-right text-gray-700 font-sans">{order.currency_symbol}{feesTotal.toFixed(2)}</td>
+                              </tr>
+                            )}
+                            {discountTotal > 0 && (
+                              <tr>
+                                <td colSpan={5} className="py-2 px-4 text-right text-emerald-600 font-sans">
+                                  Discount {order.coupon_lines && order.coupon_lines.length > 0 ? `(${order.coupon_lines.map((c) => c.code).join(", ")})` : ""}
+                                </td>
+                                <td className="py-2 px-4 text-right text-emerald-600 font-sans">-{order.currency_symbol}{discountTotal.toFixed(2)}</td>
+                              </tr>
+                            )}
                             <tr>
                               <td colSpan={5} className="py-2.5 px-4 text-right text-gray-900 font-bold font-sans">Order Total</td>
                               <td className="py-2.5 px-4 text-right text-gray-900 font-bold font-sans">{order.currency_symbol}{parseFloat(order.total).toFixed(2)}</td>
@@ -910,10 +993,10 @@ export default function OrderDetailPage() {
                               <div
                                 key={note.id}
                                 className={`rounded px-3 py-2 text-xs font-sans ${note.is_customer_note
-                                    ? "bg-blue-50 border border-blue-100"
-                                    : note.is_system_note
-                                      ? "bg-purple-50 border border-purple-100"
-                                      : "bg-gray-50 border border-gray-150"
+                                  ? "bg-blue-50 border border-blue-100"
+                                  : note.is_system_note
+                                    ? "bg-purple-50 border border-purple-100"
+                                    : "bg-gray-50 border border-gray-150"
                                   }`}
                               >
                                 <div className="text-gray-800 whitespace-pre-wrap">{note.content}</div>
