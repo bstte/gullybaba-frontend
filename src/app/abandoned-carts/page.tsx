@@ -49,6 +49,7 @@ export default function AbandonedCartsPage() {
         prodTypeVal
       );
       if (res.success) {
+        console.log("res", res.carts)
         setCarts(res.carts);
         setNoteDrafts(
           Object.fromEntries(res.carts.map((cart: AbandonedCart) => [cart.id, cart.notes === "—" ? "" : cart.notes]))
@@ -123,8 +124,8 @@ export default function AbandonedCartsPage() {
           {/* Toast Notification */}
           {notification && (
             <div className={`absolute top-4 right-4 z-50 px-4 py-3 rounded shadow-md border text-xs font-medium flex items-center gap-2 animate-bounce ${notification.type === "success"
-                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                : "bg-red-50 border-red-200 text-red-800"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-red-50 border-red-200 text-red-800"
               }`}>
               <span className="w-1.5 h-1.5 bg-current rounded-full"></span>
               <span>{notification.message}</span>
@@ -238,13 +239,13 @@ export default function AbandonedCartsPage() {
                           </td>
                           <td className="py-3 px-4">
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold font-sans border ${cart.product.toLowerCase() === "book"
-                                ? "bg-blue-50 text-blue-700 border-blue-100"
-                                : "bg-teal-50 text-teal-700 border-teal-100"
+                              ? "bg-blue-50 text-blue-700 border-blue-100"
+                              : "bg-teal-50 text-teal-700 border-teal-100"
                               }`}>
                               {cart.product}
                             </span>
                           </td>
-                     
+
                           <td className="py-3 px-4 text-gray-400 font-sans">
                             {new Date(cart.created_at).toLocaleString(undefined, {
                               year: "numeric",
@@ -254,7 +255,7 @@ export default function AbandonedCartsPage() {
                               minute: "2-digit"
                             })}
                           </td>
-                               <td className="py-3 px-4 text-gray-600 font-sans">
+                          <td className="py-3 px-4 text-gray-600 font-sans">
                             <div className="flex items-center gap-2">
                               <input
                                 type="text"

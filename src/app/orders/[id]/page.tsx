@@ -738,7 +738,7 @@ export default function OrderDetailPage() {
                                     </svg>
                                     <span className="font-medium text-gray-900">{s.method_title || "Shipping"}</span>
                                   </div>
-                                  <span className="font-semibold text-gray-700">{order.currency_symbol}{parseFloat(s.total || "0").toFixed(2)}</span>
+                                  {/* <span className="font-semibold text-gray-700">{order.currency_symbol}{parseFloat(s.total || "0").toFixed(2)}</span> */}
                                 </div>
                               ))}
                             </div>
@@ -840,12 +840,12 @@ export default function OrderDetailPage() {
                               <td colSpan={5} className="py-2 px-4 text-right text-gray-500 font-sans">Items subtotal</td>
                               <td className="py-2 px-4 text-right text-gray-700 font-sans">{order.currency_symbol}{itemsSubtotal.toFixed(2)}</td>
                             </tr>
-                            {order.fee_lines.length > 0 && (
+                            {/* {order.fee_lines.length > 0 && (
                               <tr>
                                 <td colSpan={5} className="py-2 px-4 text-right text-gray-500 font-sans">Fees</td>
                                 <td className="py-2 px-4 text-right text-gray-700 font-sans">{order.currency_symbol}{feesTotal.toFixed(2)}</td>
                               </tr>
-                            )}
+                            )} */}
                             {discountTotal > 0 && (
                               <tr>
                                 <td colSpan={5} className="py-2 px-4 text-right text-emerald-600 font-sans">
