@@ -798,16 +798,6 @@ export default function OrderDetailPage() {
                                             <span className="font-bold text-gray-700">Medium:</span> {medium}
                                           </div>
                                         )}
-                                        {li.category && (
-                                          <div className="text-[11px] text-gray-600 font-normal">
-                                            <span className="font-bold text-gray-700">Category:</span> {li.category}
-                                          </div>
-                                        )}
-                                        {li.sku && (
-                                          <div className="text-[11px] text-gray-600 font-normal">
-                                            <span className="font-bold text-gray-700">Code:</span> {li.sku}
-                                          </div>
-                                        )}
                                       </div>
                                     </div>
                                   </td>
@@ -850,14 +840,6 @@ export default function OrderDetailPage() {
                               <td colSpan={5} className="py-2 px-4 text-right text-gray-500 font-sans">Items subtotal</td>
                               <td className="py-2 px-4 text-right text-gray-700 font-sans">{order.currency_symbol}{itemsSubtotal.toFixed(2)}</td>
                             </tr>
-                            {((order.shipping_lines && order.shipping_lines.length > 0) || shippingTotal > 0) && (
-                              <tr>
-                                <td colSpan={5} className="py-2 px-4 text-right text-gray-500 font-sans">
-                                  Shipping {order.shipping_lines && order.shipping_lines.length > 0 ? `(${order.shipping_lines.map((s) => s.method_title).filter(Boolean).join(", ")})` : ""}
-                                </td>
-                                <td className="py-2 px-4 text-right text-gray-700 font-sans">{order.currency_symbol}{shippingTotal.toFixed(2)}</td>
-                              </tr>
-                            )}
                             {order.fee_lines.length > 0 && (
                               <tr>
                                 <td colSpan={5} className="py-2 px-4 text-right text-gray-500 font-sans">Fees</td>
