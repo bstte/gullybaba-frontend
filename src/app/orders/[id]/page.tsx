@@ -31,6 +31,9 @@ interface LineItem {
   sku: string | null;
   category: string;
   image: string | null;
+  medium?: string;
+  product_id?: number;
+  meta_data?: { id: number; key: string; value: string }[];
 }
 
 interface FeeLine {
@@ -197,7 +200,7 @@ export default function OrderDetailPage() {
     loadNotes(token);
     fetchOrderStatusCounts(token).then((res) => {
       if (res.success) setStatusList(res.statusList || []);
-    }).catch(() => {});
+    }).catch(() => { });
 
     setIsLoadingWeight(true);
     fetchOrderWeight(token, orderId).then((res) => {
@@ -452,7 +455,7 @@ export default function OrderDetailPage() {
                 ← Orders
               </button>
               <h2 className="text-base font-bold text-gray-900 font-sans">Edit order</h2>
-            
+
             </div>
           </div>
 
@@ -485,223 +488,223 @@ export default function OrderDetailPage() {
                     {/* Order details: General / Billing / Shipping */}
                     <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
                       <div className="grid grid-cols-1 md:grid-cols-[1.7fr_1fr_1fr] divide-y md:divide-y-0 md:divide-x divide-gray-100">
-                    {/* General */}
-                    <div className="p-4 space-y-3">
-                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">General</h4>
+                        {/* General */}
+                        <div className="p-4 space-y-3">
+                          <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">General</h4>
 
-                      <div>
-                        <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Date created:</div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans">
-                            {new Date(order.date_created).toLocaleDateString("en-CA")}
-                          </div>
-                          <span className="text-[10px] text-gray-400 font-sans">@</span>
-                          <div className="w-14 bg-gray-50 border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans text-center">
-                            {new Date(order.date_created).toLocaleTimeString(undefined, { hour: "2-digit", hour12: false })}
-                          </div>
-                          <span className="text-[10px] text-gray-400 font-sans">:</span>
-                          <div className="w-14 bg-gray-50 border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans text-center">
-                            {new Date(order.date_created).toLocaleTimeString(undefined, { minute: "2-digit" }).replace(/.*:/, "")}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Status:</div>
-                        {canEditStatus ? (
-                          <select
-                            value={selectedStatus}
-                            onChange={(e) => setSelectedStatus(e.target.value)}
-                            className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
-                          >
-                            {statusList.map((s) => (
-                              <option key={s.value} value={s.value}>{s.label}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <div className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans">
-                            {statusList.find((s) => s.value === order.status)?.label || order.status}
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-semibold text-gray-500 uppercase font-sans">Customer:</span>
-                          <span className="text-[10px] font-sans space-x-2">
-                            {canProfileLink && (
-                              <a href={`/users/${order.customer_id}`} className="text-[#E31E24] hover:underline">Profile →</a>
-                            )}
-                            <a href={`/orders?customer=${order.customer_id}`} className="text-[#E31E24] hover:underline">View other orders →</a>
-                          </span>
-                        </div>
-                        <div className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans">
-                          {order.billing.first_name} {order.billing.last_name} (#{order.customer_id}{order.billing.email ? ` – ${order.billing.email}` : ""})
-                        </div>
-                      </div>
-
-                      {canWeight && (
-                        <div>
-                          <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Weight (kg) :</div>
-                          <input
-                            type="text"
-                            value={isLoadingWeight ? "Calculating…" : weight}
-                            disabled={isLoadingWeight}
-                            onChange={(e) => setWeight(e.target.value)}
-                            className="w-full bg-white border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] disabled:bg-gray-50 disabled:text-gray-400"
-                          />
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2 pt-1">
-                        {canShiprocket && (
-                          <button
-                            onClick={handleSendToShiprocket}
-                            disabled={isSendingShiprocket || isLoadingWeight}
-                            className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
-                          >
-                            {isSendingShiprocket ? "Building…" : "Send to Shiprocket"}
-                          </button>
-                        )}
-                        <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans ${shiprocketStatus === "Sent" ? "text-emerald-700 border-emerald-600" : "text-[#E31E24] border-[#E31E24]"}`}>
-                          Status: {shiprocketStatus}
-                        </span>
-                      </div>
-
-                      <div className="pt-2 border-t border-gray-100 space-y-1.5">
-                        <div className="text-xs font-sans"><span className="text-gray-500">Shiprocket AWB Code:</span></div>
-                        <div className="text-xs font-sans"><span className="text-gray-500">Pickup Date:</span></div>
-                        <div className="text-xs font-sans"><span className="text-gray-500">Current Status:</span></div>
-                        <div className="text-xs font-sans"><span className="text-gray-500">Courier Name:</span></div>
-                        <div className="text-xs font-sans"><span className="text-gray-500">Estimated Delivery Date:</span></div>
-                        <div className="text-xs font-sans">
-                          <span className="text-gray-500">Shipment Tracking URL: </span>
-                          <a href="https://www.shiprocket.in/shipment-tracking/" target="_blank" rel="noopener noreferrer" className="text-[#E31E24] hover:underline">https://www.shiprocket.in/shipment-tracking/</a>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          onClick={handleFetchShiprocketStatus}
-                          disabled={isFetchingShiprocketStatus}
-                          className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
-                        >
-                          {isFetchingShiprocketStatus ? "Checking…" : "Click to Get Current Status of Shiprocket Details"}
-                        </button>
-                        <a
-                          href={`https://wa.me/91${(order.billing.phone || "").replace(/\D/g, "")}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[10px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded font-sans"
-                        >
-                          Whatsapp to User
-                        </a>
-                      </div>
-
-                      {canSpeedPost && (
-                        <div className="mt-1 bg-gray-50 border border-gray-200 rounded p-3 space-y-2">
-                          <div className="text-xs font-bold text-gray-600 font-sans">Speed Post Details</div>
                           <div>
-                            <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Speed Post:</div>
-                            <select disabled className="w-full bg-gray-100 border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-400 font-sans cursor-not-allowed">
-                              <option>No</option>
-                            </select>
+                            <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Date created:</div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans">
+                                {new Date(order.date_created).toLocaleDateString("en-CA")}
+                              </div>
+                              <span className="text-[10px] text-gray-400 font-sans">@</span>
+                              <div className="w-14 bg-gray-50 border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans text-center">
+                                {new Date(order.date_created).toLocaleTimeString(undefined, { hour: "2-digit", hour12: false })}
+                              </div>
+                              <span className="text-[10px] text-gray-400 font-sans">:</span>
+                              <div className="w-14 bg-gray-50 border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans text-center">
+                                {new Date(order.date_created).toLocaleTimeString(undefined, { minute: "2-digit" }).replace(/.*:/, "")}
+                              </div>
+                            </div>
                           </div>
-                          <div className="text-xs font-sans">
-                            <span className="text-gray-500">Speed Post Tracking URL: </span>
-                            <a href="https://www.17track.net/en/" target="_blank" rel="noopener noreferrer" className="text-[#E31E24] hover:underline">https://www.17track.net/en/</a>
+
+                          <div>
+                            <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Status:</div>
+                            {canEditStatus ? (
+                              <select
+                                value={selectedStatus}
+                                onChange={(e) => setSelectedStatus(e.target.value)}
+                                className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
+                              >
+                                {statusList.map((s) => (
+                                  <option key={s.value} value={s.value}>{s.label}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans">
+                                {statusList.find((s) => s.value === order.status)?.label || order.status}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      )}
-                    </div>
 
-                    {/* Billing */}
-                    <div className="p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Billing</h4>
-                        {canEditUserDetail && (
-                          <button
-                            onClick={() => {
-                              if (!isEditingBilling) setBillingForm({ ...order.billing });
-                              setIsEditingBilling(!isEditingBilling);
-                            }}
-                            className="text-gray-400 hover:text-[#E31E24]"
-                            title="Edit billing address"
-                          >
-                            <PencilIcon />
-                          </button>
-                        )}
-                      </div>
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] font-semibold text-gray-500 uppercase font-sans">Customer:</span>
+                              <span className="text-[10px] font-sans space-x-2">
+                                {canProfileLink && (
+                                  <a href={`/users/${order.customer_id}`} className="text-[#E31E24] hover:underline">Profile →</a>
+                                )}
+                                <a href={`/orders?customer=${order.customer_id}`} className="text-[#E31E24] hover:underline">View other orders →</a>
+                              </span>
+                            </div>
+                            <div className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans">
+                              {order.billing.first_name} {order.billing.last_name} (#{order.customer_id}{order.billing.email ? ` – ${order.billing.email}` : ""})
+                            </div>
+                          </div>
 
-                      {isEditingBilling && billingForm ? (
-                        renderAddressForm(billingForm, setBillingForm, true)
-                      ) : (
-                        renderAddress(order.billing, true)
-                      )}
+                          {canWeight && (
+                            <div>
+                              <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Weight (kg) :</div>
+                              <input
+                                type="text"
+                                value={isLoadingWeight ? "Calculating…" : weight}
+                                disabled={isLoadingWeight}
+                                onChange={(e) => setWeight(e.target.value)}
+                                className="w-full bg-white border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] disabled:bg-gray-50 disabled:text-gray-400"
+                              />
+                            </div>
+                          )}
 
-                      <div className="pt-2 border-t border-gray-100 space-y-2">
-                        <div className="flex items-center gap-2">
-                          {canTekipost && (
+                          <div className="flex items-center gap-2 pt-1">
+                            {canShiprocket && (
+                              <button
+                                onClick={handleSendToShiprocket}
+                                disabled={isSendingShiprocket || isLoadingWeight}
+                                className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
+                              >
+                                {isSendingShiprocket ? "Building…" : "Send to Shiprocket"}
+                              </button>
+                            )}
+                            <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans ${shiprocketStatus === "Sent" ? "text-emerald-700 border-emerald-600" : "text-[#E31E24] border-[#E31E24]"}`}>
+                              Status: {shiprocketStatus}
+                            </span>
+                          </div>
+
+                          <div className="pt-2 border-t border-gray-100 space-y-1.5">
+                            <div className="text-xs font-sans"><span className="text-gray-500">Shiprocket AWB Code:</span></div>
+                            <div className="text-xs font-sans"><span className="text-gray-500">Pickup Date:</span></div>
+                            <div className="text-xs font-sans"><span className="text-gray-500">Current Status:</span></div>
+                            <div className="text-xs font-sans"><span className="text-gray-500">Courier Name:</span></div>
+                            <div className="text-xs font-sans"><span className="text-gray-500">Estimated Delivery Date:</span></div>
+                            <div className="text-xs font-sans">
+                              <span className="text-gray-500">Shipment Tracking URL: </span>
+                              <a href="https://www.shiprocket.in/shipment-tracking/" target="_blank" rel="noopener noreferrer" className="text-[#E31E24] hover:underline">https://www.shiprocket.in/shipment-tracking/</a>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1">
                             <button
-                              onClick={handleSendToTekipost}
-                              disabled={isSendingTekipost || isLoadingWeight}
+                              onClick={handleFetchShiprocketStatus}
+                              disabled={isFetchingShiprocketStatus}
                               className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
                             >
-                              {isSendingTekipost ? "Building…" : "Send to Tekipost"}
+                              {isFetchingShiprocketStatus ? "Checking…" : "Click to Get Current Status of Shiprocket Details"}
                             </button>
+                            <a
+                              href={`https://wa.me/91${(order.billing.phone || "").replace(/\D/g, "")}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded font-sans"
+                            >
+                              Whatsapp to User
+                            </a>
+                          </div>
+
+                          {canSpeedPost && (
+                            <div className="mt-1 bg-gray-50 border border-gray-200 rounded p-3 space-y-2">
+                              <div className="text-xs font-bold text-gray-600 font-sans">Speed Post Details</div>
+                              <div>
+                                <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Speed Post:</div>
+                                <select disabled className="w-full bg-gray-100 border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-400 font-sans cursor-not-allowed">
+                                  <option>No</option>
+                                </select>
+                              </div>
+                              <div className="text-xs font-sans">
+                                <span className="text-gray-500">Speed Post Tracking URL: </span>
+                                <a href="https://www.17track.net/en/" target="_blank" rel="noopener noreferrer" className="text-[#E31E24] hover:underline">https://www.17track.net/en/</a>
+                              </div>
+                            </div>
                           )}
-                          <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans ${tekipostStatus === "Sent" ? "text-emerald-700 border-emerald-600" : "text-[#E31E24] border-[#E31E24]"}`}>
-                            Status: {tekipostStatus}
-                          </span>
                         </div>
-                        <div className="text-xs font-sans"><span className="text-gray-500">Tracking No. :</span></div>
-                        <div className="text-xs font-sans"><span className="text-gray-500">Courier Name:</span></div>
-                        <div className="text-xs font-sans"><span className="text-gray-500">Status:</span></div>
-                        <div className="text-xs font-sans">
-                          <span className="text-gray-500">Tracking URL: </span>
-                          <a href="https://app.tekipost.com/track-order" target="_blank" rel="noopener noreferrer" className="text-[#E31E24] hover:underline">https://app.tekipost.com/track-order</a>
+
+                        {/* Billing */}
+                        <div className="p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Billing</h4>
+                            {canEditUserDetail && (
+                              <button
+                                onClick={() => {
+                                  if (!isEditingBilling) setBillingForm({ ...order.billing });
+                                  setIsEditingBilling(!isEditingBilling);
+                                }}
+                                className="text-gray-400 hover:text-[#E31E24]"
+                                title="Edit billing address"
+                              >
+                                <PencilIcon />
+                              </button>
+                            )}
+                          </div>
+
+                          {isEditingBilling && billingForm ? (
+                            renderAddressForm(billingForm, setBillingForm, true)
+                          ) : (
+                            renderAddress(order.billing, true)
+                          )}
+
+                          <div className="pt-2 border-t border-gray-100 space-y-2">
+                            <div className="flex items-center gap-2">
+                              {canTekipost && (
+                                <button
+                                  onClick={handleSendToTekipost}
+                                  disabled={isSendingTekipost || isLoadingWeight}
+                                  className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
+                                >
+                                  {isSendingTekipost ? "Building…" : "Send to Tekipost"}
+                                </button>
+                              )}
+                              <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans ${tekipostStatus === "Sent" ? "text-emerald-700 border-emerald-600" : "text-[#E31E24] border-[#E31E24]"}`}>
+                                Status: {tekipostStatus}
+                              </span>
+                            </div>
+                            <div className="text-xs font-sans"><span className="text-gray-500">Tracking No. :</span></div>
+                            <div className="text-xs font-sans"><span className="text-gray-500">Courier Name:</span></div>
+                            <div className="text-xs font-sans"><span className="text-gray-500">Status:</span></div>
+                            <div className="text-xs font-sans">
+                              <span className="text-gray-500">Tracking URL: </span>
+                              <a href="https://app.tekipost.com/track-order" target="_blank" rel="noopener noreferrer" className="text-[#E31E24] hover:underline">https://app.tekipost.com/track-order</a>
+                            </div>
+                            <button
+                              onClick={handleFetchTekipostStatus}
+                              disabled={isFetchingTekipostStatus}
+                              className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
+                            >
+                              {isFetchingTekipostStatus ? "Checking…" : "Click to Get Current Status of tekipost Details"}
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          onClick={handleFetchTekipostStatus}
-                          disabled={isFetchingTekipostStatus}
-                          className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
-                        >
-                          {isFetchingTekipostStatus ? "Checking…" : "Click to Get Current Status of tekipost Details"}
-                        </button>
-                      </div>
-                    </div>
 
-                    {/* Shipping */}
-                    <div className="p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Shipping</h4>
-                        {canEditUserDetail && (
-                          <button
-                            onClick={() => {
-                              if (!isEditingShipping) setShippingForm({ ...order.shipping });
-                              setIsEditingShipping(!isEditingShipping);
-                            }}
-                            className="text-gray-400 hover:text-[#E31E24]"
-                            title="Edit shipping address"
-                          >
-                            <PencilIcon />
-                          </button>
-                        )}
-                      </div>
+                        {/* Shipping */}
+                        <div className="p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Shipping</h4>
+                            {canEditUserDetail && (
+                              <button
+                                onClick={() => {
+                                  if (!isEditingShipping) setShippingForm({ ...order.shipping });
+                                  setIsEditingShipping(!isEditingShipping);
+                                }}
+                                className="text-gray-400 hover:text-[#E31E24]"
+                                title="Edit shipping address"
+                              >
+                                <PencilIcon />
+                              </button>
+                            )}
+                          </div>
 
-                      {isEditingShipping && shippingForm ? (
-                        renderAddressForm(shippingForm, setShippingForm, false)
-                      ) : (
-                        renderAddress(order.shipping, false)
-                      )}
+                          {isEditingShipping && shippingForm ? (
+                            renderAddressForm(shippingForm, setShippingForm, false)
+                          ) : (
+                            renderAddress(order.shipping, false)
+                          )}
 
-                      {order.customer_note && (
-                        <div className="pt-3 border-t border-gray-100 text-xs font-sans">
-                          <div className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Customer provided note</div>
-                          <div className="text-gray-700">{order.customer_note}</div>
+                          {order.customer_note && (
+                            <div className="pt-3 border-t border-gray-100 text-xs font-sans">
+                              <div className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Customer provided note</div>
+                              <div className="text-gray-700">{order.customer_note}</div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
                       </div>
                     </div>
 
@@ -720,26 +723,56 @@ export default function OrderDetailPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {order.line_items.map((li) => (
-                              <tr key={li.id}>
-                                <td className="py-2.5 px-4 font-sans text-gray-900 font-medium">
-                                  <div className="flex items-center gap-3">
-                                    <img
-                                      src={li.image || "/logo.svg"}
-                                      alt={li.name}
-                                      className="w-10 h-10 object-cover rounded border border-gray-200 shrink-0"
-                                      onError={(e) => { (e.target as HTMLImageElement).src = "/logo.svg"; }}
-                                    />
-                                    <span>{li.name}</span>
-                                  </div>
-                                </td>
-                                <td className="py-2.5 px-4 font-sans text-gray-600">{li.category || "—"}</td>
-                                <td className="py-2.5 px-4 font-sans text-gray-600">{li.sku || "—"}</td>
-                                <td className="py-2.5 px-4 font-sans text-gray-700 text-right">{order.currency_symbol}{parseFloat(li.price).toFixed(2)}</td>
-                                <td className="py-2.5 px-4 font-sans text-gray-700 text-right">× {li.quantity}</td>
-                                <td className="py-2.5 px-4 font-sans text-gray-900 font-semibold text-right">{order.currency_symbol}{parseFloat(li.total).toFixed(2)}</td>
-                              </tr>
-                            ))}
+                            {order.line_items.map((li) => {
+                              const medium = li.medium || (() => {
+                                const m = li.meta_data?.find((x) => ["Medium", "medium", "pa_languages", "Language"].includes(x.key));
+                                if (!m?.value) return "";
+                                const s = String(m.value).trim().toLowerCase();
+                                if (s === "hindi-medium" || s === "hindi medium" || s === "hindi") return "Hindi";
+                                if (s === "english-medium" || s === "english medium" || s === "english") return "English";
+                                if (s === "sanskrit-medium" || s === "sanskrit medium" || s === "sanskrit") return "Sanskrit";
+                                if (s === "urdu-medium" || s === "urdu medium" || s === "urdu") return "Urdu";
+                                return m.value.replace(/-medium$/i, "").replace(/^./, (c) => c.toUpperCase());
+                              })();
+
+                              return (
+                                <tr key={li.id}>
+                                  <td className="py-3 px-4 font-sans text-gray-900 font-medium">
+                                    <div className="flex items-start gap-3">
+                                      <img
+                                        src={li.image || "/logo.svg"}
+                                        alt={li.name}
+                                        className="w-10 h-10 object-cover rounded border border-gray-200 shrink-0 mt-0.5"
+                                        onError={(e) => { (e.target as HTMLImageElement).src = "/logo.svg"; }}
+                                      />
+                                      <div className="flex flex-col gap-1 pb-2">
+                                        <span className="text-[#0073aa] hover:underline font-medium leading-snug cursor-pointer">{li.name}</span>
+                                        {medium && (
+                                          <div className="text-[11px] text-gray-600 font-normal">
+                                            <span className="font-bold text-gray-700">Medium:</span> {medium}
+                                          </div>
+                                        )}
+                                        {li.category && (
+                                          <div className="text-[11px] text-gray-600 font-normal">
+                                            <span className="font-bold text-gray-700">Category:</span> {li.category}
+                                          </div>
+                                        )}
+                                        {li.sku && (
+                                          <div className="text-[11px] text-gray-600 font-normal">
+                                            <span className="font-bold text-gray-700">Code:</span> {li.sku}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 font-sans text-gray-600 align-top pt-3">{li.category || "—"}</td>
+                                  <td className="py-3 px-4 font-sans text-gray-600 align-top pt-3">{li.sku || "—"}</td>
+                                  <td className="py-3 px-4 font-sans text-gray-700 text-right align-top pt-3">{order.currency_symbol}{parseFloat(li.price).toFixed(2)}</td>
+                                  <td className="py-3 px-4 font-sans text-gray-700 text-right align-top pt-3">× {li.quantity}</td>
+                                  <td className="py-3 px-4 font-sans text-gray-900 font-semibold text-right align-top pt-3">{order.currency_symbol}{parseFloat(li.total).toFixed(2)}</td>
+                                </tr>
+                              );
+                            })}
                             {order.fee_lines.map((f) => (
                               <tr key={f.id}>
                                 <td className="py-2.5 px-4 font-sans text-gray-500" colSpan={5}>{f.name}</td>
@@ -876,13 +909,12 @@ export default function OrderDetailPage() {
                             notes.map((note) => (
                               <div
                                 key={note.id}
-                                className={`rounded px-3 py-2 text-xs font-sans ${
-                                  note.is_customer_note
+                                className={`rounded px-3 py-2 text-xs font-sans ${note.is_customer_note
                                     ? "bg-blue-50 border border-blue-100"
                                     : note.is_system_note
-                                    ? "bg-purple-50 border border-purple-100"
-                                    : "bg-gray-50 border border-gray-150"
-                                }`}
+                                      ? "bg-purple-50 border border-purple-100"
+                                      : "bg-gray-50 border border-gray-150"
+                                  }`}
                               >
                                 <div className="text-gray-800 whitespace-pre-wrap">{note.content}</div>
                                 <div className="mt-1.5 text-[10px] text-gray-500">
