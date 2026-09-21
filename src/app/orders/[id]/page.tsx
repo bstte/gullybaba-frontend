@@ -4,9 +4,34 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
-import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, previewShiprocket, previewTekipost, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
+import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, previewShiprocket, previewTekipost, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
 import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canSendToShiprocket, canSendToTekipost, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
+
+interface DownloadItem {
+  permission_id: number;
+  order_id: number;
+  product_id: number;
+  product_name: string;
+  download_id: string;
+  download_name: string;
+  file_url: string;
+  download_count: number;
+  downloads_remaining: string | number;
+  access_granted: string;
+  access_expires: string | null;
+  user_email: string;
+}
+
+function getFileName(url: string): string {
+  if (!url) return "";
+  try {
+    const parts = url.split("/");
+    return decodeURIComponent(parts[parts.length - 1] || "");
+  } catch {
+    return url;
+  }
+}
 
 interface Address {
   first_name: string;
@@ -141,6 +166,12 @@ export default function OrderDetailPage() {
   const [newNoteType, setNewNoteType] = useState("");
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [deletingNoteId, setDeletingNoteId] = useState<number | null>(null);
+  const [downloads, setDownloads] = useState<DownloadItem[]>([]);
+  const [isLoadingDownloads, setIsLoadingDownloads] = useState(false);
+  const [isDownloadsBoxOpen, setIsDownloadsBoxOpen] = useState(true);
+  const [expandedDownloadIds, setExpandedDownloadIds] = useState<Record<number, boolean>>({});
+  const [copiedDownloadId, setCopiedDownloadId] = useState<number | null>(null);
+  const [searchDownloadQuery, setSearchDownloadQuery] = useState("");
 
   const showNotification = (message: string, type: "success" | "error") => {
     setNotification({ message, type });
@@ -173,6 +204,45 @@ export default function OrderDetailPage() {
     } finally {
       setIsLoadingNotes(false);
     }
+  };
+
+  const loadDownloads = async (tok: string) => {
+    try {
+      setIsLoadingDownloads(true);
+      const res = await fetchOrderDownloads(tok, orderId);
+      if (res.success && Array.isArray(res.downloads)) {
+        setDownloads(res.downloads);
+        const initialExpanded: Record<number, boolean> = {};
+        res.downloads.forEach((d: DownloadItem) => {
+          initialExpanded[d.permission_id] = true;
+        });
+        setExpandedDownloadIds(initialExpanded);
+      } else {
+        setDownloads([]);
+      }
+    } catch (err: any) {
+      console.error("Failed to load order downloads:", err);
+    } finally {
+      setIsLoadingDownloads(false);
+    }
+  };
+
+  const handleCopyLink = async (download: DownloadItem) => {
+    try {
+      await navigator.clipboard.writeText(download.file_url);
+      setCopiedDownloadId(download.permission_id);
+      showNotification("Download link copied to clipboard!", "success");
+      setTimeout(() => setCopiedDownloadId(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy download link:", err);
+    }
+  };
+
+  const toggleDownloadItem = (permissionId: number) => {
+    setExpandedDownloadIds((prev) => ({
+      ...prev,
+      [permissionId]: !prev[permissionId],
+    }));
   };
 
   const handleAddNote = async () => {
@@ -220,6 +290,7 @@ export default function OrderDetailPage() {
     if (!ready || !token || !orderId) return;
     loadOrder(token);
     loadNotes(token);
+    loadDownloads(token);
     fetchOrderStatusCounts(token).then((res) => {
       if (res.success) setStatusList(res.statusList || []);
     }).catch(() => { });
@@ -861,6 +932,171 @@ export default function OrderDetailPage() {
                           </tfoot>
                         </table>
                       </div>
+                    </div>
+
+                    {/* Downloadable product permissions */}
+                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                      <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-150 bg-gray-50/50">
+                        <h4 className="text-xs font-bold text-gray-700 font-sans">Downloadable product permissions</h4>
+                        <div className="flex items-center gap-2 text-gray-400">
+                          <button
+                            type="button"
+                            title="Downloadable product permissions allow customers to download digital products purchased in this order."
+                            className="w-4 h-4 flex items-center justify-center rounded-full text-[11px] font-bold text-gray-400 hover:text-gray-600 hover:bg-gray-200"
+                          >
+                            ?
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsDownloadsBoxOpen(!isDownloadsBoxOpen)}
+                            className="p-0.5 hover:text-gray-600 transition-colors"
+                            title={isDownloadsBoxOpen ? "Collapse" : "Expand"}
+                          >
+                            <svg viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 transition-transform ${isDownloadsBoxOpen ? "" : "rotate-180"}`}>
+                              <path d="M10 6l-5 5h10l-5-5z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsDownloadsBoxOpen(!isDownloadsBoxOpen)}
+                            className="p-0.5 hover:text-gray-600 transition-colors"
+                            title={isDownloadsBoxOpen ? "Collapse" : "Expand"}
+                          >
+                            <svg viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 transition-transform ${isDownloadsBoxOpen ? "" : "rotate-180"}`}>
+                              <path d="M10 14l5-5H5l5 5z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      {isDownloadsBoxOpen && (
+                        <div className="p-4 space-y-3 font-sans">
+                          {isLoadingDownloads ? (
+                            <div className="text-xs text-gray-400 py-3">Loading downloadable permissions…</div>
+                          ) : downloads.length === 0 ? (
+                            <div className="text-xs text-gray-500 py-2 italic">
+                              No downloadable product permissions for this order yet.
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {downloads.map((item) => {
+                                const isExpanded = expandedDownloadIds[item.permission_id] ?? true;
+                                const fileName = getFileName(item.file_url) || item.download_name;
+                                return (
+                                  <div
+                                    key={item.permission_id}
+                                    className="border border-gray-200 rounded bg-white shadow-xs overflow-hidden"
+                                  >
+                                    {/* Permission Item Header */}
+                                    <div className="bg-gray-50/75 border-b border-gray-200 px-3 py-2 flex items-center justify-between gap-2">
+                                      <div
+                                        className="text-xs font-bold text-gray-800 font-sans truncate select-none cursor-pointer flex-1"
+                                        onClick={() => toggleDownloadItem(item.permission_id)}
+                                        title={`#${item.product_id} — ${item.product_name} — ${item.download_name}: ${fileName} — Downloaded ${item.download_count} ${item.download_count === 1 ? "time" : "times"}`}
+                                      >
+                                        #{item.product_id} — {item.product_name} — {item.download_name}: {fileName} — Downloaded {item.download_count} {item.download_count === 1 ? "time" : "times"}
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleDownloadItem(item.permission_id)}
+                                          className="text-gray-400 hover:text-gray-600 p-0.5 text-[10px]"
+                                          title={isExpanded ? "Collapse item" : "Expand item"}
+                                        >
+                                          {isExpanded ? "▲" : "▼"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            showNotification("Revoke access will be connected in the next step with update API.", "success");
+                                          }}
+                                          className="text-[11px] font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3 py-1 rounded transition-colors font-sans"
+                                        >
+                                          Revoke access
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Permission Item Body (when expanded) */}
+                                    {isExpanded && (
+                                      <div className="p-4 bg-white grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                                        <div>
+                                          <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
+                                            Downloads remaining
+                                          </label>
+                                          <input
+                                            type="text"
+                                            defaultValue={item.downloads_remaining ?? ""}
+                                            className="w-full sm:w-28 bg-white border border-gray-300 rounded px-2.5 py-1.5 text-xs text-gray-800 font-sans outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-[#E31E24]"
+                                          />
+                                        </div>
+
+                                        <div>
+                                          <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
+                                            Access expires
+                                          </label>
+                                          <input
+                                            type="text"
+                                            defaultValue={item.access_expires ? item.access_expires.slice(0, 10) : "Never"}
+                                            className="w-full sm:w-36 bg-white border border-gray-300 rounded px-2.5 py-1.5 text-xs text-gray-800 font-sans outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-[#E31E24]"
+                                          />
+                                        </div>
+
+                                        <div>
+                                          <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
+                                            Customer download link
+                                          </label>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleCopyLink(item)}
+                                            className="text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-1.5 rounded transition-colors font-sans"
+                                          >
+                                            {copiedDownloadId === item.permission_id ? "Copied!" : "Copy link"}
+                                          </button>
+                                        </div>
+
+                                        <div>
+                                          <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
+                                            Customer download log
+                                          </label>
+                                          <a
+                                            href={item.file_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-block text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-1.5 rounded transition-colors font-sans"
+                                          >
+                                            View report
+                                          </a>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Search and Grant access row */}
+                          <div className="pt-2 border-t border-gray-100 flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={searchDownloadQuery}
+                              onChange={(e) => setSearchDownloadQuery(e.target.value)}
+                              placeholder="Search for a downloadable product..."
+                              className="flex-1 max-w-sm bg-white border border-gray-300 rounded px-3 py-1.5 text-xs text-gray-700 placeholder-gray-400 font-sans outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-[#E31E24]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                showNotification("Grant access will be connected in the next step with update API.", "success");
+                              }}
+                              className="text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-1.5 rounded transition-colors font-sans shrink-0"
+                            >
+                              Grant access
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
