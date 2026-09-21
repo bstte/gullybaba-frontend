@@ -251,6 +251,18 @@ export async function fetchOrderDownloads(token: string, id: number | string) {
   return handleResponse(response, "Failed to fetch order downloads");
 }
 
+export async function searchDownloadableProducts(token: string, search: string) {
+  const response = await fetch(`${API_URL}/api/orders/downloadable-products?search=${encodeURIComponent(search)}`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to search downloadable products");
+}
+
 export async function addOrderNote(token: string, id: number | string, content: string, noteType: string) {
   const response = await fetch(`${API_URL}/api/orders/local/${id}/notes`, {
     method: "POST",

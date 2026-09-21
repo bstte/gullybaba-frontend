@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
-import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, previewShiprocket, previewTekipost, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
+import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, previewShiprocket, previewTekipost, searchDownloadableProducts, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
 import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canSendToShiprocket, canSendToTekipost, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
 
@@ -31,6 +31,170 @@ function getFileName(url: string): string {
   } catch {
     return url;
   }
+}
+
+interface CalendarPopoverProps {
+  value: string;
+  onChange: (val: string) => void;
+  onClose: () => void;
+}
+
+function CalendarPopover({ value, onChange, onClose }: CalendarPopoverProps) {
+  const initialDate = value ? new Date(value) : new Date();
+  const [viewYear, setViewYear] = useState(isNaN(initialDate.getTime()) ? new Date().getFullYear() : initialDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(isNaN(initialDate.getTime()) ? new Date().getMonth() : initialDate.getMonth());
+
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const handlePrevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(viewYear - 1);
+    } else {
+      setViewMonth(viewMonth - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(viewYear + 1);
+    } else {
+      setViewMonth(viewMonth + 1);
+    }
+  };
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDayIndex = (new Date(viewYear, viewMonth, 1).getDay() + 6) % 7; // Monday = 0
+
+  const today = new Date();
+  const isToday = (day: number) =>
+    today.getDate() === day && today.getMonth() === viewMonth && today.getFullYear() === viewYear;
+
+  const selectedDateStr = value;
+  const isSelected = (day: number) => {
+    if (!selectedDateStr) return false;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const dStr = `${viewYear}-${pad(viewMonth + 1)}-${pad(day)}`;
+    return selectedDateStr.startsWith(dStr);
+  };
+
+  const selectDay = (day: number) => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const dStr = `${viewYear}-${pad(viewMonth + 1)}-${pad(day)}`;
+    onChange(dStr);
+    onClose();
+  };
+
+  const setToday = () => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const dStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    onChange(dStr);
+    setViewYear(today.getFullYear());
+    setViewMonth(today.getMonth());
+    onClose();
+  };
+
+  return (
+    <div
+      className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-300 rounded shadow-xl font-sans w-56 text-xs select-none"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div className="bg-gradient-to-b from-gray-100 to-gray-200 border-b border-gray-300 px-2 py-1.5 flex items-center justify-between font-bold text-gray-800">
+        <button
+          type="button"
+          onClick={handlePrevMonth}
+          className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-300 text-gray-700 text-xs"
+          title="Previous Month"
+        >
+          &#9664;
+        </button>
+        <span className="text-xs font-bold text-gray-800">
+          {monthNames[viewMonth]} {viewYear}
+        </span>
+        <button
+          type="button"
+          onClick={handleNextMonth}
+          className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-300 text-gray-700 text-xs"
+          title="Next Month"
+        >
+          &#9654;
+        </button>
+      </div>
+
+      {/* Days of week */}
+      <div className="grid grid-cols-7 text-center font-bold text-gray-700 py-1 border-b border-gray-150 text-[11px] bg-gray-50">
+        <div>M</div>
+        <div>T</div>
+        <div>W</div>
+        <div>T</div>
+        <div>F</div>
+        <div>S</div>
+        <div>S</div>
+      </div>
+
+      {/* Dates grid */}
+      <div className="grid grid-cols-7 gap-0.5 p-1 text-center text-xs">
+        {Array.from({ length: firstDayIndex }).map((_, i) => (
+          <div key={`empty-${i}`} className="h-6" />
+        ))}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const day = i + 1;
+          const currentIsToday = isToday(day);
+          const currentIsSelected = isSelected(day);
+
+          return (
+            <button
+              key={`day-${day}`}
+              type="button"
+              onClick={() => selectDay(day)}
+              className={`h-6 w-full flex items-center justify-center rounded text-xs transition-colors ${
+                currentIsSelected
+                  ? "bg-[#E31E24] text-white font-bold"
+                  : currentIsToday
+                  ? "border border-amber-400 bg-amber-50/60 font-bold text-gray-900"
+                  : "text-gray-800 hover:bg-gray-100"
+              }`}
+            >
+              {day}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Footer */}
+      <div className="border-t border-gray-200 p-1.5 flex items-center justify-between bg-gray-50">
+        <button
+          type="button"
+          onClick={setToday}
+          className="bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded px-2 py-0.5 text-[11px] font-medium text-gray-700 shadow-xs"
+        >
+          Today
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onChange("");
+            onClose();
+          }}
+          className="text-gray-500 hover:text-red-600 text-[11px] font-medium"
+        >
+          Never
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded px-2.5 py-0.5 text-[11px] font-medium text-gray-700 shadow-xs"
+        >
+          Done
+        </button>
+      </div>
+    </div>
+  );
 }
 
 interface Address {
@@ -171,7 +335,20 @@ export default function OrderDetailPage() {
   const [isDownloadsBoxOpen, setIsDownloadsBoxOpen] = useState(true);
   const [expandedDownloadIds, setExpandedDownloadIds] = useState<Record<number, boolean>>({});
   const [copiedDownloadId, setCopiedDownloadId] = useState<number | null>(null);
-  const [searchDownloadQuery, setSearchDownloadQuery] = useState("");
+  const [accessExpiresMap, setAccessExpiresMap] = useState<Record<number, string>>({});
+  const [activeCalendarId, setActiveCalendarId] = useState<number | null>(null);
+
+  // Search & Multi-select State
+  const [downloadSearchQuery, setDownloadSearchQuery] = useState("");
+  const [isDownloadSearchFocused, setIsDownloadSearchFocused] = useState(false);
+  const [isSearchingDownloads, setIsSearchingDownloads] = useState(false);
+  const [downloadSearchResults, setDownloadSearchResults] = useState<any[]>([]);
+  const [selectedDownloadProducts, setSelectedDownloadProducts] = useState<
+    Array<{ product_id: number; product_name: string; display_label: string }>
+  >([]);
+  const [hoveredSearchResultIndex, setHoveredSearchResultIndex] = useState<number>(-1);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const showNotification = (message: string, type: "success" | "error") => {
     setNotification({ message, type });
@@ -213,10 +390,13 @@ export default function OrderDetailPage() {
       if (res.success && Array.isArray(res.downloads)) {
         setDownloads(res.downloads);
         const initialExpanded: Record<number, boolean> = {};
+        const initialDates: Record<number, string> = {};
         res.downloads.forEach((d: DownloadItem) => {
           initialExpanded[d.permission_id] = true;
+          initialDates[d.permission_id] = d.access_expires ? d.access_expires.slice(0, 10) : "";
         });
         setExpandedDownloadIds(initialExpanded);
+        setAccessExpiresMap(initialDates);
       } else {
         setDownloads([]);
       }
@@ -231,7 +411,6 @@ export default function OrderDetailPage() {
     try {
       await navigator.clipboard.writeText(download.file_url);
       setCopiedDownloadId(download.permission_id);
-      showNotification("Download link copied to clipboard!", "success");
       setTimeout(() => setCopiedDownloadId(null), 2000);
     } catch (err) {
       console.error("Failed to copy download link:", err);
@@ -243,6 +422,81 @@ export default function OrderDetailPage() {
       ...prev,
       [permissionId]: !prev[permissionId],
     }));
+  };
+
+  // Debounced search for downloadable products
+  useEffect(() => {
+    const q = downloadSearchQuery.trim();
+    if (!token || q.length < 3) {
+      setDownloadSearchResults([]);
+      setIsSearchingDownloads(false);
+      return;
+    }
+
+    setIsSearchingDownloads(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await searchDownloadableProducts(token, q);
+        if (res && Array.isArray(res.products)) {
+          setDownloadSearchResults(res.products);
+        } else {
+          setDownloadSearchResults([]);
+        }
+      } catch (err) {
+        console.error("Error searching downloadable products:", err);
+        setDownloadSearchResults([]);
+      } finally {
+        setIsSearchingDownloads(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [downloadSearchQuery, token]);
+
+  // Click outside to close search dropdown & calendar
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (searchContainerRef.current && !searchContainerRef.current.contains(target)) {
+        setIsDownloadSearchFocused(false);
+      }
+      if (!target.closest(".calendar-popover-container")) {
+        setActiveCalendarId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSelectProduct = (product: any) => {
+    const fileCode = product.files?.[0]?.download_name;
+    const labelCode = fileCode
+      ? fileCode
+      : product.parent_id && product.parent_id !== 0
+      ? `#${product.product_id}`
+      : `#${product.product_id}`;
+    const display_label = `${product.product_name} (${labelCode})`;
+
+    if (!selectedDownloadProducts.some((p) => p.product_id === product.product_id)) {
+      setSelectedDownloadProducts((prev) => [
+        ...prev,
+        {
+          product_id: product.product_id,
+          product_name: product.product_name,
+          display_label,
+        },
+      ]);
+    }
+    setDownloadSearchQuery("");
+    setDownloadSearchResults([]);
+    setIsDownloadSearchFocused(false);
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 50);
+  };
+
+  const handleRemoveSelectedProduct = (productId: number) => {
+    setSelectedDownloadProducts((prev) => prev.filter((p) => p.product_id !== productId));
   };
 
   const handleAddNote = async () => {
@@ -1031,15 +1285,30 @@ export default function OrderDetailPage() {
                                           />
                                         </div>
 
-                                        <div>
+                                        <div className="relative calendar-popover-container">
                                           <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
                                             Access expires
                                           </label>
                                           <input
                                             type="text"
-                                            defaultValue={item.access_expires ? item.access_expires.slice(0, 10) : "Never"}
-                                            className="w-full sm:w-36 bg-white border border-gray-300 rounded px-2.5 py-1.5 text-xs text-gray-800 font-sans outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-[#E31E24]"
+                                            readOnly
+                                            value={accessExpiresMap[item.permission_id] || ""}
+                                            placeholder="Never"
+                                            onClick={() => setActiveCalendarId(activeCalendarId === item.permission_id ? null : item.permission_id)}
+                                            className="w-full sm:w-36 bg-white border border-gray-300 rounded px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-500 font-sans outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-[#E31E24] cursor-pointer"
                                           />
+                                          {activeCalendarId === item.permission_id && (
+                                            <CalendarPopover
+                                              value={accessExpiresMap[item.permission_id] || ""}
+                                              onChange={(newDate) => {
+                                                setAccessExpiresMap((prev) => ({
+                                                  ...prev,
+                                                  [item.permission_id]: newDate,
+                                                }));
+                                              }}
+                                              onClose={() => setActiveCalendarId(null)}
+                                            />
+                                          )}
                                         </div>
 
                                         <div>
@@ -1059,14 +1328,13 @@ export default function OrderDetailPage() {
                                           <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
                                             Customer download log
                                           </label>
-                                          <a
-                                            href={item.file_url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
+                                          <button
+                                            type="button"
+                                            onClick={() => alert("working")}
                                             className="inline-block text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-1.5 rounded transition-colors font-sans"
                                           >
                                             View report
-                                          </a>
+                                          </button>
                                         </div>
                                       </div>
                                     )}
@@ -1077,20 +1345,90 @@ export default function OrderDetailPage() {
                           )}
 
                           {/* Search and Grant access row */}
-                          <div className="pt-2 border-t border-gray-100 flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={searchDownloadQuery}
-                              onChange={(e) => setSearchDownloadQuery(e.target.value)}
-                              placeholder="Search for a downloadable product..."
-                              className="flex-1 max-w-sm bg-white border border-gray-300 rounded px-3 py-1.5 text-xs text-gray-700 placeholder-gray-400 font-sans outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-[#E31E24]"
-                            />
+                          <div className="pt-2 border-t border-gray-100 flex items-start gap-2">
+                            <div ref={searchContainerRef} className="relative flex-1 max-w-lg">
+                              {/* Multi-select box (tags + input) */}
+                              <div
+                                onClick={() => searchInputRef.current?.focus()}
+                                className="min-h-[36px] p-1.5 flex flex-wrap items-center gap-1.5 border border-gray-300 rounded bg-white cursor-text focus-within:border-[#E31E24] focus-within:ring-1 focus-within:ring-[#E31E24]"
+                              >
+                                {selectedDownloadProducts.map((p) => (
+                                  <span
+                                    key={p.product_id}
+                                    className="inline-flex items-center gap-1 bg-[#f0f0f1] border border-gray-300 text-gray-800 text-xs px-2 py-0.5 rounded font-sans"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRemoveSelectedProduct(p.product_id);
+                                      }}
+                                      className="text-gray-500 hover:text-red-600 font-bold text-xs"
+                                    >
+                                      ×
+                                    </button>
+                                    <span className="truncate max-w-[260px]">{p.display_label}</span>
+                                  </span>
+                                ))}
+                                <input
+                                  ref={searchInputRef}
+                                  type="text"
+                                  value={downloadSearchQuery}
+                                  onChange={(e) => setDownloadSearchQuery(e.target.value)}
+                                  onFocus={() => setIsDownloadSearchFocused(true)}
+                                  placeholder={selectedDownloadProducts.length === 0 ? "Search for a downloadable product..." : ""}
+                                  className="flex-1 min-w-[140px] bg-transparent text-xs text-gray-800 placeholder-gray-400 font-sans outline-none px-1 py-0.5"
+                                />
+                              </div>
+
+                              {/* Dropdown Popover */}
+                              {isDownloadSearchFocused && (
+                                downloadSearchQuery.trim().length < 3 ? (
+                                  <div className="absolute left-0 bottom-full mb-1 w-full bg-white border border-gray-300 rounded shadow-lg z-50 p-2.5 text-xs text-gray-700 font-sans">
+                                    Please enter 3 or more characters
+                                  </div>
+                                ) : (
+                                  <div className="absolute left-0 bottom-full mb-1 w-full max-h-56 overflow-y-auto bg-white border border-gray-300 rounded shadow-lg z-50 font-sans divide-y divide-gray-100">
+                                    {isSearchingDownloads ? (
+                                      <div className="p-3 text-xs text-gray-500 font-sans">Searching…</div>
+                                    ) : downloadSearchResults.length === 0 ? (
+                                      <div className="p-3 text-xs text-gray-500 font-sans">No downloadable products found.</div>
+                                    ) : (
+                                      downloadSearchResults.map((product, idx) => {
+                                        const fileCode = product.files?.[0]?.download_name;
+                                        const labelCode = fileCode
+                                          ? fileCode
+                                          : product.parent_id && product.parent_id !== 0
+                                          ? `#${product.product_id}`
+                                          : `#${product.product_id}`;
+                                        const displayLabel = `${product.product_name} (${labelCode})`;
+                                        const isHovered = hoveredSearchResultIndex === idx;
+
+                                        return (
+                                          <div
+                                            key={`${product.product_id}-${idx}`}
+                                            onMouseEnter={() => setHoveredSearchResultIndex(idx)}
+                                            onClick={() => handleSelectProduct(product)}
+                                            className={`px-3 py-2 text-xs cursor-pointer select-none font-sans transition-colors ${
+                                              isHovered ? "bg-[#e31e24] text-white" : "text-gray-800 hover:bg-gray-100"
+                                            }`}
+                                          >
+                                            {displayLabel}
+                                          </div>
+                                        );
+                                      })
+                                    )}
+                                  </div>
+                                )
+                              )}
+                            </div>
+
                             <button
                               type="button"
                               onClick={() => {
                                 showNotification("Grant access will be connected in the next step with update API.", "success");
                               }}
-                              className="text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-1.5 rounded transition-colors font-sans shrink-0"
+                              className="text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-2 rounded transition-colors font-sans shrink-0 h-[36px]"
                             >
                               Grant access
                             </button>
