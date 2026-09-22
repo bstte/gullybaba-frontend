@@ -263,6 +263,61 @@ export async function searchDownloadableProducts(token: string, search: string) 
   return handleResponse(response, "Failed to search downloadable products");
 }
 
+export async function grantOrderDownloadAccess(
+  token: string,
+  id: number | string,
+  data: { product_id?: number; product_ids?: number[]; download_id?: string; quantity?: number }
+) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}/downloads/grant`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  return handleResponse(response, "Failed to grant download access");
+}
+
+export async function revokeOrderDownloadAccess(
+  token: string,
+  id: number | string,
+  data: { permission_id?: number; product_id?: number; download_id?: string }
+) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}/downloads/revoke`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  return handleResponse(response, "Failed to revoke download access");
+}
+
+export async function fetchOrderDownloadLogs(
+  token: string,
+  orderId: number | string,
+  permissionId?: number | string
+) {
+  let url = `${API_URL}/api/orders/local/${orderId}/downloads/logs`;
+  if (permissionId) {
+    url += `?permission_id=${encodeURIComponent(permissionId)}`;
+  }
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to fetch customer download logs");
+}
+
 export async function addOrderNote(token: string, id: number | string, content: string, noteType: string) {
   const response = await fetch(`${API_URL}/api/orders/local/${id}/notes`, {
     method: "POST",

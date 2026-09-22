@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
-import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, previewShiprocket, previewTekipost, searchDownloadableProducts, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
+import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, revokeOrderDownloadAccess, searchDownloadableProducts, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
 import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canSendToShiprocket, canSendToTekipost, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
 
@@ -21,6 +21,22 @@ interface DownloadItem {
   access_granted: string;
   access_expires: string | null;
   user_email: string;
+}
+
+interface DownloadLogItem {
+  download_log_id: number;
+  timestamp: string;
+  permission_id: number;
+  product_id: number;
+  product_name: string;
+  download_id: string;
+  download_name: string;
+  file_url: string;
+  file_label: string;
+  order_id: number;
+  user_id: number;
+  user_display: string;
+  user_ip_address: string;
 }
 
 function getFileName(url: string): string {
@@ -347,6 +363,12 @@ export default function OrderDetailPage() {
     Array<{ product_id: number; product_name: string; display_label: string }>
   >([]);
   const [hoveredSearchResultIndex, setHoveredSearchResultIndex] = useState<number>(-1);
+  const [isGrantingAccess, setIsGrantingAccess] = useState(false);
+  const [revokingPermissionId, setRevokingPermissionId] = useState<number | null>(null);
+  const [activeReportPermission, setActiveReportPermission] = useState<DownloadItem | null>(null);
+  const [downloadLogs, setDownloadLogs] = useState<DownloadLogItem[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -392,7 +414,7 @@ export default function OrderDetailPage() {
         const initialExpanded: Record<number, boolean> = {};
         const initialDates: Record<number, string> = {};
         res.downloads.forEach((d: DownloadItem) => {
-          initialExpanded[d.permission_id] = true;
+          initialExpanded[d.permission_id] = false;
           initialDates[d.permission_id] = d.access_expires ? d.access_expires.slice(0, 10) : "";
         });
         setExpandedDownloadIds(initialExpanded);
@@ -497,6 +519,82 @@ export default function OrderDetailPage() {
 
   const handleRemoveSelectedProduct = (productId: number) => {
     setSelectedDownloadProducts((prev) => prev.filter((p) => p.product_id !== productId));
+  };
+
+  const handleGrantAccess = async () => {
+    if (!token || !order) return;
+    if (selectedDownloadProducts.length === 0) {
+      showNotification("Please select at least one downloadable product to grant access.", "error");
+      return;
+    }
+
+    try {
+      setIsGrantingAccess(true);
+      const productIds = selectedDownloadProducts.map((p) => p.product_id);
+      const res = await grantOrderDownloadAccess(token, order.id, { product_ids: productIds });
+
+      if (res.success) {
+        showNotification("Download access granted successfully.", "success");
+        setSelectedDownloadProducts([]);
+        setDownloadSearchQuery("");
+        setDownloadSearchResults([]);
+        setIsDownloadSearchFocused(false);
+        await loadDownloads(token);
+      } else {
+        showNotification(res.message || "Failed to grant download access.", "error");
+      }
+    } catch (err: any) {
+      console.error("Error granting download access:", err);
+      showNotification(err.message || "Failed to grant download access.", "error");
+    } finally {
+      setIsGrantingAccess(false);
+    }
+  };
+
+  const handleRevokeAccess = async (permissionId: number, downloadName: string) => {
+    if (!token || !order) return;
+    if (!window.confirm(`Are you sure you want to revoke download access for "${downloadName}"?`)) {
+      return;
+    }
+
+    try {
+      setRevokingPermissionId(permissionId);
+      const res = await revokeOrderDownloadAccess(token, order.id, { permission_id: permissionId });
+      if (res.success) {
+        showNotification("Download access revoked successfully.", "success");
+        setDownloads((prev) => prev.filter((d) => d.permission_id !== permissionId));
+        await loadDownloads(token);
+      } else {
+        showNotification(res.message || "Failed to revoke download access.", "error");
+      }
+    } catch (err: any) {
+      console.error("Error revoking download access:", err);
+      showNotification(err.message || "Failed to revoke download access.", "error");
+    } finally {
+      setRevokingPermissionId(null);
+    }
+  };
+
+  const handleOpenReport = async (item: DownloadItem) => {
+    if (!token || !order) return;
+    setActiveReportPermission(item);
+    setIsLoadingLogs(true);
+    setLogsError(null);
+    setDownloadLogs([]);
+    try {
+      const res = await fetchOrderDownloadLogs(token, order.id, item.permission_id);
+      if (res.success && Array.isArray(res.logs)) {
+        setDownloadLogs(res.logs);
+      } else {
+        setDownloadLogs([]);
+        if (res.message) setLogsError(res.message);
+      }
+    } catch (err: any) {
+      console.error("Failed to load download logs:", err);
+      setLogsError(err.message || "Failed to load download logs.");
+    } finally {
+      setIsLoadingLogs(false);
+    }
   };
 
   const handleAddNote = async () => {
@@ -1234,7 +1332,7 @@ export default function OrderDetailPage() {
                           ) : (
                             <div className="space-y-3">
                               {downloads.map((item) => {
-                                const isExpanded = expandedDownloadIds[item.permission_id] ?? true;
+                                const isExpanded = Boolean(expandedDownloadIds[item.permission_id]);
                                 const fileName = getFileName(item.file_url) || item.download_name;
                                 return (
                                   <div
@@ -1261,12 +1359,28 @@ export default function OrderDetailPage() {
                                         </button>
                                         <button
                                           type="button"
-                                          onClick={() => {
-                                            showNotification("Revoke access will be connected in the next step with update API.", "success");
+                                          disabled={revokingPermissionId === item.permission_id}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleRevokeAccess(item.permission_id, item.download_name || item.product_name);
                                           }}
-                                          className="text-[11px] font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3 py-1 rounded transition-colors font-sans"
+                                          className={`text-[11px] font-semibold px-3 py-1 rounded transition-colors font-sans flex items-center gap-1 ${
+                                            revokingPermissionId === item.permission_id
+                                              ? "text-gray-400 border border-gray-250 bg-gray-50 cursor-not-allowed"
+                                              : "text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 cursor-pointer"
+                                          }`}
                                         >
-                                          Revoke access
+                                          {revokingPermissionId === item.permission_id ? (
+                                            <>
+                                              <svg className="animate-spin h-3 w-3 text-[#E31E24]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                              </svg>
+                                              <span>Revoking...</span>
+                                            </>
+                                          ) : (
+                                            "Revoke access"
+                                          )}
                                         </button>
                                       </div>
                                     </div>
@@ -1330,8 +1444,8 @@ export default function OrderDetailPage() {
                                           </label>
                                           <button
                                             type="button"
-                                            onClick={() => alert("working")}
-                                            className="inline-block text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-1.5 rounded transition-colors font-sans"
+                                            onClick={() => handleOpenReport(item)}
+                                            className="inline-block text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-1.5 rounded transition-colors font-sans cursor-pointer"
                                           >
                                             View report
                                           </button>
@@ -1425,12 +1539,21 @@ export default function OrderDetailPage() {
 
                             <button
                               type="button"
-                              onClick={() => {
-                                showNotification("Grant access will be connected in the next step with update API.", "success");
-                              }}
-                              className="text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-2 rounded transition-colors font-sans shrink-0 h-[36px]"
+                              disabled={isGrantingAccess || selectedDownloadProducts.length === 0}
+                              onClick={handleGrantAccess}
+                              className={`text-xs font-semibold px-3.5 py-2 rounded transition-colors font-sans shrink-0 h-[36px] flex items-center gap-1.5 ${
+                                selectedDownloadProducts.length === 0 || isGrantingAccess
+                                  ? "text-gray-400 border border-gray-250 bg-gray-50 cursor-not-allowed"
+                                  : "text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 cursor-pointer"
+                              }`}
                             >
-                              Grant access
+                              {isGrantingAccess && (
+                                <svg className="animate-spin -ml-0.5 mr-1 h-3.5 w-3.5 text-[#E31E24]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                </svg>
+                              )}
+                              {isGrantingAccess ? "Granting..." : "Grant access"}
                             </button>
                           </div>
                         </div>
@@ -1600,6 +1723,136 @@ export default function OrderDetailPage() {
                         <span className="font-medium text-gray-900">{order.attribution.session_pages || "—"}</span>
                       </div>
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Customer Download Log Report Modal */}
+            {activeReportPermission && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+                <div className="bg-white rounded-lg shadow-2xl border border-gray-200 w-full max-w-5xl max-h-[88vh] flex flex-col overflow-hidden font-sans">
+                  {/* Modal Header */}
+                  <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-start justify-between">
+                    <div>
+                      <div className="text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-0.5">
+                        Reports &gt; Orders &gt; Customer downloads
+                      </div>
+                      <h3 className="text-base font-bold text-gray-800">
+                        Customer downloads
+                      </h3>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 bg-red-50 text-[#E31E24] border border-red-200 px-2.5 py-0.5 rounded text-xs font-medium">
+                          <span>Active filters: Permission ID {activeReportPermission.permission_id}</span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveReportPermission(null)}
+                            className="text-red-500 hover:text-red-700 font-bold text-xs leading-none"
+                            title="Clear filter"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveReportPermission(null)}
+                      className="text-gray-400 hover:text-gray-600 p-1.5 rounded hover:bg-gray-200 transition-colors text-lg leading-none cursor-pointer"
+                      title="Close"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Modal Content */}
+                  <div className="p-6 overflow-y-auto flex-1 bg-white">
+                    {isLoadingLogs ? (
+                      <div className="py-12 flex flex-col items-center justify-center gap-2 text-gray-500 text-xs">
+                        <svg className="animate-spin h-6 w-6 text-[#E31E24]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                        <span>Loading customer download logs…</span>
+                      </div>
+                    ) : logsError ? (
+                      <div className="p-4 bg-amber-50 border border-amber-200 rounded text-amber-900 text-xs space-y-2">
+                        <div className="font-semibold">Notice:</div>
+                        <div>{logsError}</div>
+                        <div className="text-[11px] text-amber-700">
+                          If you have not added the WordPress REST API code yet, please paste the provided snippet into your WordPress plugin to enable live logs.
+                        </div>
+                      </div>
+                    ) : downloadLogs.length === 0 ? (
+                      <div className="py-12 text-center text-gray-500 text-xs italic">
+                        No download activity recorded yet for Permission #{activeReportPermission.permission_id}.
+                      </div>
+                    ) : (
+                      <div className="border border-gray-200 rounded overflow-hidden shadow-xs">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-gray-50 text-gray-700 font-semibold border-b border-gray-200">
+                              <th className="p-3">Timestamp</th>
+                              <th className="p-3">Product</th>
+                              <th className="p-3">File</th>
+                              <th className="p-3">Order</th>
+                              <th className="p-3">User</th>
+                              <th className="p-3">IP address</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-150 bg-white">
+                            {downloadLogs.map((log) => (
+                              <tr key={log.download_log_id} className="hover:bg-gray-50/75 transition-colors">
+                                <td className="p-3 text-gray-700 whitespace-nowrap font-mono text-[11px]">
+                                  {log.timestamp}
+                                </td>
+                                <td className="p-3 text-gray-800 font-medium">
+                                  {log.product_name || "—"}
+                                </td>
+                                <td className="p-3 text-gray-600 max-w-xs break-all">
+                                  {log.file_label || log.download_name || "—"}
+                                </td>
+                                <td className="p-3 whitespace-nowrap font-medium text-[#E31E24]">
+                                  #{log.order_id}
+                                </td>
+                                <td className="p-3 text-gray-800">
+                                  {log.user_display || "Guest"}
+                                </td>
+                                <td className="p-3 text-gray-600 font-mono text-[11px] whitespace-nowrap">
+                                  {log.user_ip_address || "—"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-gray-50 text-gray-600 font-semibold border-t border-gray-200 text-[11px]">
+                              <th className="p-2.5">Timestamp</th>
+                              <th className="p-2.5">Product</th>
+                              <th className="p-2.5">File</th>
+                              <th className="p-2.5">Order</th>
+                              <th className="p-2.5">User</th>
+                              <th className="p-2.5 text-right font-normal text-gray-700">
+                                {downloadLogs.length} {downloadLogs.length === 1 ? "item" : "items"}
+                              </th>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+                    <span className="text-xs text-gray-500">
+                      {downloadLogs.length > 0 && `${downloadLogs.length} download records found`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveReportPermission(null)}
+                      className="bg-white hover:bg-gray-100 text-gray-700 border border-gray-350 rounded px-4 py-1.5 text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+                    >
+                      Close
+                    </button>
                   </div>
                 </div>
               </div>
