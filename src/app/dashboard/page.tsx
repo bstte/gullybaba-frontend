@@ -24,6 +24,8 @@ interface RecentOrder {
     first_name: string;
     last_name: string;
   };
+  shipping_method?: string;
+  is_same_day_delivery?: boolean;
 }
 
 interface StatCard {
@@ -195,9 +197,28 @@ export default function DashboardOverviewPage() {
                         </td>
                       </tr>
                     ) : (
-                      recentOrders.map((order) => (
-                        <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="py-3 px-5 font-mono font-semibold text-gray-900">#{order.id}</td>
+                      recentOrders.map((order) => {
+                        const isSameDay = Boolean(
+                          order.is_same_day_delivery ||
+                          /same\s*day/i.test(order.shipping_method || "")
+                        );
+
+                        return (
+                          <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="py-3 px-5 font-mono font-semibold text-gray-900">
+                              <div className="flex flex-col items-start gap-1">
+                                <span>#{order.id}</span>
+                                {isSameDay && (
+                                  <span
+                                    style={{ animation: "sameDayBlink 1s infinite" }}
+                                    className="animate-same-day-blink inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold font-sans bg-emerald-50 text-emerald-700 border border-emerald-300"
+                                  >
+                                    <span className="text-amber-500 text-[10px] leading-none">⚡</span>
+                                    <span>Same Day Delivery</span>
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                           <td className="py-3 px-5 text-gray-700 font-medium font-sans">
                             {`${order.billing?.first_name || ""} ${order.billing?.last_name || ""}`.trim() || "—"}
                           </td>
@@ -217,7 +238,8 @@ export default function DashboardOverviewPage() {
                             })}
                           </td>
                         </tr>
-                      ))
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

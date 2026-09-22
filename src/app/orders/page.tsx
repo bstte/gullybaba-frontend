@@ -31,6 +31,14 @@ interface Order {
   payment_method_title: string;
   categories: string;
   origin: string;
+  shipping_method?: string;
+  shipping_lines?: Array<{
+    id?: number;
+    method_title?: string;
+    method_id?: string;
+    total?: string;
+  }>;
+  is_same_day_delivery?: boolean;
 }
 
 export default function OrdersPage() {
@@ -553,15 +561,37 @@ export default function OrdersPage() {
                         </td>
                       </tr>
                     ) : (
-                      orders.map((order) => (
-                        <tr
-                          key={order.id}
-                          onClick={canView ? () => router.push(`/orders/${order.id}`) : undefined}
-                          className={`hover:bg-gray-50/50 transition-colors ${canView ? "cursor-pointer" : ""}`}
-                        >
-                          <td className="py-3 px-4 font-sans text-[#E31E24] font-bold">
-                            #{order.id} {order.billing.first_name} {order.billing.last_name}
-                          </td>
+                      orders.map((order) => {
+                        const isSameDay = Boolean(
+                          order.is_same_day_delivery ||
+                          /same\s*day/i.test(order.shipping_method || "") ||
+                          order.shipping_lines?.some((sl) => /same\s*day/i.test(sl.method_title || sl.method_id || ""))
+                        );
+
+                        return (
+                          <tr
+                            key={order.id}
+                            onClick={canView ? () => router.push(`/orders/${order.id}`) : undefined}
+                            className={`hover:bg-gray-50/50 transition-colors ${canView ? "cursor-pointer" : ""}`}
+                          >
+                            <td className="py-3 px-4 font-sans text-[#E31E24] font-bold">
+                              <div className="flex flex-col items-start gap-1">
+                                <div>
+                                  #{order.id} {order.billing.first_name} {order.billing.last_name}
+                                </div>
+                                {isSameDay && (
+                                  <div className="mt-0.5">
+                                    <span
+                                      style={{ animation: "sameDayBlink 1s infinite" }}
+                                      className="animate-same-day-blink inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold font-sans bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-sm"
+                                    >
+                                      <span className="text-amber-500 text-[11px] leading-none">⚡</span>
+                                      <span>Same Day Delivery</span>
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
                           <td className="py-3 px-4 text-gray-600 font-sans">
                             {new Date(order.date_created).toLocaleDateString(undefined, {
                               year: "numeric",
@@ -607,7 +637,8 @@ export default function OrdersPage() {
                           </td>
                           <td className="py-3 px-4 text-gray-500 font-sans">{order.origin}</td>
                         </tr>
-                      ))
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

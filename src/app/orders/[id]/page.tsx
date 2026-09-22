@@ -303,6 +303,8 @@ interface OrderDetail {
   fee_lines: FeeLine[];
   shipping_lines?: ShippingLine[];
   coupon_lines?: CouponLine[];
+  shipping_method?: string;
+  is_same_day_delivery?: boolean;
   attribution: {
     origin: string;
     device_type: string;
@@ -931,7 +933,22 @@ export default function OrderDetailPage() {
             {!isLoading && !loadError && order && (
               <div className="mx-auto space-y-4">
                 <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
-                  <h3 className="text-sm font-bold text-gray-900 font-sans">Order #{order.id} details</h3>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h3 className="text-sm font-bold text-gray-900 font-sans">Order #{order.id} details</h3>
+                    {Boolean(
+                      order.is_same_day_delivery ||
+                      /same\s*day/i.test(order.shipping_method || "") ||
+                      order.shipping_lines?.some((s) => /same\s*day/i.test(s.method_title || s.method_id || ""))
+                    ) && (
+                      <span
+                        style={{ animation: "sameDayBlink 1s infinite" }}
+                        className="animate-same-day-blink inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold font-sans bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-sm"
+                      >
+                        <span className="text-amber-500 text-[11px] leading-none">⚡</span>
+                        <span>Same Day Delivery</span>
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-500 font-sans mt-1">
                     Payment via {order.payment_method_title || order.payment_method || "—"}.
                     {order.customer_ip_address && ` Customer IP: ${order.customer_ip_address}`}
