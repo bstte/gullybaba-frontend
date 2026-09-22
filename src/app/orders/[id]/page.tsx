@@ -49,6 +49,17 @@ function getFileName(url: string): string {
   }
 }
 
+function formatDownloadProductLabel(product: any): string {
+  if (!product) return "";
+  const idPart = product.product_id ? `#${product.product_id} ` : "";
+  const codePart = product.product_code ? `${product.product_code} - ` : "";
+  const namePart = product.product_name || "";
+  const fileName = product.files?.[0]?.download_name || "";
+  const filePart = fileName ? ` (${fileName})` : "";
+
+  return `${idPart}${codePart}${namePart}${filePart}`;
+}
+
 interface CalendarPopoverProps {
   value: string;
   onChange: (val: string) => void;
@@ -116,7 +127,7 @@ function CalendarPopover({ value, onChange, onClose }: CalendarPopoverProps) {
 
   return (
     <div
-      className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-300 rounded shadow-xl font-sans w-56 text-xs select-none"
+      className="absolute bottom-full left-0 mb-2 z-50 bg-white border border-gray-300 rounded shadow-xl font-sans w-56 text-xs select-none"
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
@@ -491,13 +502,7 @@ export default function OrderDetailPage() {
   }, []);
 
   const handleSelectProduct = (product: any) => {
-    const fileCode = product.files?.[0]?.download_name;
-    const labelCode = fileCode
-      ? fileCode
-      : product.parent_id && product.parent_id !== 0
-      ? `#${product.product_id}`
-      : `#${product.product_id}`;
-    const display_label = `${product.product_name} (${labelCode})`;
+    const display_label = formatDownloadProductLabel(product);
 
     if (!selectedDownloadProducts.some((p) => p.product_id === product.product_id)) {
       setSelectedDownloadProducts((prev) => [
@@ -1287,8 +1292,8 @@ export default function OrderDetailPage() {
                     </div>
 
                     {/* Downloadable product permissions */}
-                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                      <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-150 bg-gray-50/50">
+                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                      <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-150 bg-gray-50/50 rounded-t-lg">
                         <h4 className="text-xs font-bold text-gray-700 font-sans">Downloadable product permissions</h4>
                         <div className="flex items-center gap-2 text-gray-400">
                           <button
@@ -1337,10 +1342,10 @@ export default function OrderDetailPage() {
                                 return (
                                   <div
                                     key={item.permission_id}
-                                    className="border border-gray-200 rounded bg-white shadow-xs overflow-hidden"
+                                    className="border border-gray-200 rounded bg-white shadow-xs overflow-visible relative"
                                   >
                                     {/* Permission Item Header */}
-                                    <div className="bg-gray-50/75 border-b border-gray-200 px-3 py-2 flex items-center justify-between gap-2">
+                                    <div className="bg-gray-50/75 border-b border-gray-200 px-3 py-2 flex items-center justify-between gap-2 rounded-t">
                                       <div
                                         className="text-xs font-bold text-gray-800 font-sans truncate select-none cursor-pointer flex-1"
                                         onClick={() => toggleDownloadItem(item.permission_id)}
@@ -1399,7 +1404,7 @@ export default function OrderDetailPage() {
                                           />
                                         </div>
 
-                                        <div className="relative calendar-popover-container">
+                                        <div className="relative z-30 calendar-popover-container">
                                           <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
                                             Access expires
                                           </label>
@@ -1460,7 +1465,7 @@ export default function OrderDetailPage() {
 
                           {/* Search and Grant access row */}
                           <div className="pt-2 border-t border-gray-100 flex items-start gap-2">
-                            <div ref={searchContainerRef} className="relative flex-1 max-w-lg">
+                            <div ref={searchContainerRef} className="relative z-30 flex-1 max-w-lg">
                               {/* Multi-select box (tags + input) */}
                               <div
                                 onClick={() => searchInputRef.current?.focus()}
@@ -1469,7 +1474,8 @@ export default function OrderDetailPage() {
                                 {selectedDownloadProducts.map((p) => (
                                   <span
                                     key={p.product_id}
-                                    className="inline-flex items-center gap-1 bg-[#f0f0f1] border border-gray-300 text-gray-800 text-xs px-2 py-0.5 rounded font-sans"
+                                    className="inline-flex items-center gap-1.5 bg-[#f0f0f1] border border-gray-300 text-gray-800 text-xs px-2.5 py-1 rounded font-sans max-w-full"
+                                    title={p.display_label}
                                   >
                                     <button
                                       type="button"
@@ -1477,11 +1483,11 @@ export default function OrderDetailPage() {
                                         e.stopPropagation();
                                         handleRemoveSelectedProduct(p.product_id);
                                       }}
-                                      className="text-gray-500 hover:text-red-600 font-bold text-xs"
+                                      className="text-gray-500 hover:text-red-600 font-bold text-sm leading-none"
                                     >
                                       ×
                                     </button>
-                                    <span className="truncate max-w-[260px]">{p.display_label}</span>
+                                    <span className="truncate max-w-[340px] font-medium">{p.display_label}</span>
                                   </span>
                                 ))}
                                 <input
@@ -1495,27 +1501,27 @@ export default function OrderDetailPage() {
                                 />
                               </div>
 
-                              {/* Dropdown Popover */}
+                              {/* Dropdown Popover (opens upward above input) */}
                               {isDownloadSearchFocused && (
                                 downloadSearchQuery.trim().length < 3 ? (
-                                  <div className="absolute left-0 bottom-full mb-1 w-full bg-white border border-gray-300 rounded shadow-lg z-50 p-2.5 text-xs text-gray-700 font-sans">
+                                  <div className="absolute left-0 bottom-full mb-2 w-full bg-white border border-gray-300 rounded-md shadow-xl z-50 p-3 text-xs text-gray-600 font-sans">
                                     Please enter 3 or more characters
                                   </div>
                                 ) : (
-                                  <div className="absolute left-0 bottom-full mb-1 w-full max-h-56 overflow-y-auto bg-white border border-gray-300 rounded shadow-lg z-50 font-sans divide-y divide-gray-100">
+                                  <div className="absolute left-0 bottom-full mb-2 w-full sm:min-w-[620px] max-w-3xl max-h-72 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-2xl z-50 font-sans divide-y divide-gray-150">
                                     {isSearchingDownloads ? (
-                                      <div className="p-3 text-xs text-gray-500 font-sans">Searching…</div>
+                                      <div className="p-3.5 text-xs text-gray-500 font-sans flex items-center gap-2">
+                                        <svg className="animate-spin h-3.5 w-3.5 text-[#E31E24]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                        </svg>
+                                        <span>Searching downloadable products…</span>
+                                      </div>
                                     ) : downloadSearchResults.length === 0 ? (
-                                      <div className="p-3 text-xs text-gray-500 font-sans">No downloadable products found.</div>
+                                      <div className="p-3.5 text-xs text-gray-500 font-sans">No downloadable products found.</div>
                                     ) : (
                                       downloadSearchResults.map((product, idx) => {
-                                        const fileCode = product.files?.[0]?.download_name;
-                                        const labelCode = fileCode
-                                          ? fileCode
-                                          : product.parent_id && product.parent_id !== 0
-                                          ? `#${product.product_id}`
-                                          : `#${product.product_id}`;
-                                        const displayLabel = `${product.product_name} (${labelCode})`;
+                                        const displayLabel = formatDownloadProductLabel(product);
                                         const isHovered = hoveredSearchResultIndex === idx;
 
                                         return (
@@ -1523,11 +1529,20 @@ export default function OrderDetailPage() {
                                             key={`${product.product_id}-${idx}`}
                                             onMouseEnter={() => setHoveredSearchResultIndex(idx)}
                                             onClick={() => handleSelectProduct(product)}
-                                            className={`px-3 py-2 text-xs cursor-pointer select-none font-sans transition-colors ${
-                                              isHovered ? "bg-[#e31e24] text-white" : "text-gray-800 hover:bg-gray-100"
+                                            className={`px-3.5 py-2.5 text-xs cursor-pointer select-none font-sans transition-colors leading-snug ${
+                                              isHovered
+                                                ? "bg-[#e31e24] text-white"
+                                                : "text-gray-800 hover:bg-gray-50"
                                             }`}
                                           >
-                                            {displayLabel}
+                                            <div className="font-medium text-xs break-words">
+                                              {displayLabel}
+                                            </div>
+                                            {product.product_categories && (
+                                              <div className={`text-[11px] mt-0.5 truncate ${isHovered ? "text-red-100" : "text-gray-400"}`}>
+                                                Categories: {product.product_categories}
+                                              </div>
+                                            )}
                                           </div>
                                         );
                                       })
