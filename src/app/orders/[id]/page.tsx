@@ -1237,7 +1237,7 @@ export default function OrderDetailPage() {
                                   {isSendingDtdc ? "Sending…" : "Send to DTDC"}
                                 </button>
                               )}
-                              <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans ${isDtdcSent ? "text-emerald-700 border-emerald-600" : "text-[#E31E24] border-[#E31E24]"}`}>
+                              <span className="text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans text-[#E31E24] border-[#E31E24]">
                                 Status: {dtdcStatus}
                               </span>
                             </div>
