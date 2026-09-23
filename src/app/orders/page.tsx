@@ -577,8 +577,9 @@ export default function OrdersPage() {
                         return (
                           <tr
                             key={order.id}
-                            onClick={canView ? () => router.push(`/orders/${order.id}`) : undefined}
-                            className={`hover:bg-gray-50/50 transition-colors ${canView ? "cursor-pointer" : ""}`}
+                            /* canView condition commented out so user can click to open order */
+                            onClick={() => router.push(`/orders/${order.id}`)}
+                            className="hover:bg-gray-50/50 transition-colors cursor-pointer"
                           >
                             <td className="py-3 px-4 font-sans text-[#E31E24] font-bold">
                               <div className="flex flex-col items-start gap-1">

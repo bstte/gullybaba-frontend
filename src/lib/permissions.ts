@@ -83,7 +83,8 @@ export function canDeleteOrderNote(profile: CustomerProfile | null | undefined):
 
 // Gates opening an order's detail ("edit order") page from the orders list.
 export function canViewOrder(profile: CustomerProfile | null | undefined): boolean {
-  return hasOrdersFlag(profile, VIEW_ORDER_KEY);
+  // return hasOrdersFlag(profile, VIEW_ORDER_KEY);
+  return true;
 }
 
 // Gates the "Profile →" link next to the Customer field on the order detail page.

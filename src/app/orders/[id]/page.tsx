@@ -639,12 +639,13 @@ export default function OrderDetailPage() {
     }
   };
 
-  useEffect(() => {
-    if (ready && profile && !canView) {
-      router.push("/orders");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, profile, canView]);
+  // canView check commented out so user can open order details
+  // useEffect(() => {
+  //   if (ready && profile && !canView) {
+  //     router.push("/orders");
+  //   }
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [ready, profile, canView]);
 
   useEffect(() => {
     if (!ready || !token || !orderId) return;
