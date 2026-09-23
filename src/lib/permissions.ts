@@ -9,6 +9,7 @@ export const EDIT_USER_DETAIL_KEY = "edit_user_detail";
 export const EDIT_ORDER_STATUS_KEY = "edit_order_status";
 export const SEND_TO_SHIPROCKET_KEY = "send_to_shiprocket";
 export const SEND_TO_TEKIPOST_KEY = "send_to_tekipost";
+export const SEND_TO_DTDC_KEY = "send_to_dtdc";
 export const SPEED_POST_KEY = "speed_post";
 export const ORDER_WEIGHT_KEY = "order_weight";
 export const ORDER_NOTE_KEY = "order_note";
@@ -23,7 +24,7 @@ function getMetaValue(profile: CustomerProfile | null | undefined, key: string):
 
 // Administrator role ko sab access_orders flags par unconditional access milta hai,
 // meta_data me flag set ho ya na ho.
-function isAdministrator(profile: CustomerProfile | null | undefined): boolean {
+export function isAdministrator(profile: CustomerProfile | null | undefined): boolean {
   return profile?.role === "administrator";
 }
 
@@ -53,6 +54,11 @@ export function canSendToShiprocket(profile: CustomerProfile | null | undefined)
 // Gates the "Send to Tekipost" button.
 export function canSendToTekipost(profile: CustomerProfile | null | undefined): boolean {
   return hasOrdersFlag(profile, SEND_TO_TEKIPOST_KEY);
+}
+
+// Gates the "Send to DTDC" button.
+export function canSendToDtdc(profile: CustomerProfile | null | undefined): boolean {
+  return hasOrdersFlag(profile, SEND_TO_DTDC_KEY);
 }
 
 // Gates the Speed Post Details section.

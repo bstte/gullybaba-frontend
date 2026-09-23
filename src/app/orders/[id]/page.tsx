@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
-import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, revokeOrderDownloadAccess, searchDownloadableProducts, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
+import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, revokeOrderDownloadAccess, searchDownloadableProducts, sendToDtdc, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
-import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canSendToShiprocket, canSendToTekipost, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
+import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canSendToDtdc, canSendToShiprocket, canSendToTekipost, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
 
 interface DownloadItem {
   permission_id: number;
@@ -179,13 +179,12 @@ function CalendarPopover({ value, onChange, onClose }: CalendarPopoverProps) {
               key={`day-${day}`}
               type="button"
               onClick={() => selectDay(day)}
-              className={`h-6 w-full flex items-center justify-center rounded text-xs transition-colors ${
-                currentIsSelected
+              className={`h-6 w-full flex items-center justify-center rounded text-xs transition-colors ${currentIsSelected
                   ? "bg-[#E31E24] text-white font-bold"
                   : currentIsToday
-                  ? "border border-amber-400 bg-amber-50/60 font-bold text-gray-900"
-                  : "text-gray-800 hover:bg-gray-100"
-              }`}
+                    ? "border border-amber-400 bg-amber-50/60 font-bold text-gray-900"
+                    : "text-gray-800 hover:bg-gray-100"
+                }`}
             >
               {day}
             </button>
@@ -325,6 +324,7 @@ export default function OrderDetailPage() {
   const canEditStatus = canEditOrderStatus(profile);
   const canShiprocket = canSendToShiprocket(profile);
   const canTekipost = canSendToTekipost(profile);
+  const canDtdc = canSendToDtdc(profile);
   const canSpeedPost = canViewSpeedPost(profile);
   const canWeight = canViewOrderWeight(profile);
   const canNotes = canViewOrderNotes(profile);
@@ -350,6 +350,7 @@ export default function OrderDetailPage() {
   const [isLoadingWeight, setIsLoadingWeight] = useState(false);
   const [isSendingTekipost, setIsSendingTekipost] = useState(false);
   const [isSendingShiprocket, setIsSendingShiprocket] = useState(false);
+  const [isSendingDtdc, setIsSendingDtdc] = useState(false);
   const [isFetchingTekipostStatus, setIsFetchingTekipostStatus] = useState(false);
   const [isFetchingShiprocketStatus, setIsFetchingShiprocketStatus] = useState(false);
   const [orderAction, setOrderAction] = useState("");
@@ -707,6 +708,31 @@ export default function OrderDetailPage() {
     }
   };
 
+  const handleSendToDtdc = async () => {
+    if (!token || !order) return;
+    if (!weight || Number(weight) <= 0) {
+      showNotification("Enter a valid weight before sending to DTDC.", "error");
+      return;
+    }
+    const alreadySent = !!order.meta_data?.find((m) => m.key === "_dtdc_reference_number")?.value || order.meta_data?.find((m) => m.key === "dtdc_status")?.value === "Sent";
+    if (alreadySent) {
+      showNotification("This order has already been sent to DTDC.", "error");
+      return;
+    }
+    try {
+      setIsSendingDtdc(true);
+      const res = await sendToDtdc(token, order.id, Number(weight));
+      console.log(`[dtdc] submission response for order #${order.id}:`, res);
+      if (res.warnings?.length) console.warn(`[dtdc] warnings for order #${order.id}:`, res.warnings);
+      showNotification(res.message || `Order #${order.id} sent to DTDC successfully.`, "success");
+      await loadOrder(token);
+    } catch (err: any) {
+      showNotification(err.message || "Failed to send order to DTDC", "error");
+    } finally {
+      setIsSendingDtdc(false);
+    }
+  };
+
   const handleFetchTekipostStatus = async () => {
     if (!token || !order) return;
     try {
@@ -886,6 +912,9 @@ export default function OrderDetailPage() {
   const getOrderMeta = (key: string) => order?.meta_data.find((m) => m.key === key)?.value || "";
   const shiprocketStatus = getOrderMeta("shiprocket_status") === "Sent" ? "Sent" : "Not Sent";
   const tekipostStatus = getOrderMeta("tekipost_status") === "Sent" ? "Sent" : "Not Sent";
+  const dtdcReference = getOrderMeta("_dtdc_reference_number");
+  const isDtdcSent = !!dtdcReference || getOrderMeta("dtdc_status") === "Sent";
+  const dtdcStatus = dtdcReference || (isDtdcSent ? "Sent" : "Not Sent");
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-50 text-gray-900 font-sans overflow-hidden">
@@ -940,14 +969,14 @@ export default function OrderDetailPage() {
                       /same\s*day/i.test(order.shipping_method || "") ||
                       order.shipping_lines?.some((s) => /same\s*day/i.test(s.method_title || s.method_id || ""))
                     ) && (
-                      <span
-                        style={{ animation: "sameDayBlink 1s infinite" }}
-                        className="animate-same-day-blink inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold font-sans bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-sm"
-                      >
-                        <span className="text-amber-500 text-[11px] leading-none">⚡</span>
-                        <span>Same Day Delivery</span>
-                      </span>
-                    )}
+                        <span
+                          style={{ animation: "sameDayBlink 1s infinite" }}
+                          className="animate-same-day-blink inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold font-sans bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-sm"
+                        >
+                          <span className="text-amber-500 text-[11px] leading-none">⚡</span>
+                          <span>Same Day Delivery</span>
+                        </span>
+                      )}
                   </div>
                   <p className="text-xs text-gray-500 font-sans mt-1">
                     Payment via {order.payment_method_title || order.payment_method || "—"}.
@@ -1195,6 +1224,40 @@ export default function OrderDetailPage() {
                               <div className="text-gray-700">{order.customer_note}</div>
                             </div>
                           )}
+
+                          <div className="pt-2 border-t border-gray-100 space-y-2">
+                            <div className="flex items-center gap-2">
+                              {canDtdc && (
+                                <button
+                                  onClick={handleSendToDtdc}
+                                  disabled={isSendingDtdc || isLoadingWeight || isDtdcSent}
+                                  className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
+                                >
+                                  {isSendingDtdc ? "Sending…" : "Send to DTDC"}
+                                </button>
+                              )}
+                              <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans ${isDtdcSent ? "text-emerald-700 border-emerald-600" : "text-[#E31E24] border-[#E31E24]"}`}>
+                                Status: {dtdcStatus}
+                              </span>
+                            </div>
+                            {dtdcReference && (
+                              <div className="text-xs font-sans">
+                                <span className="text-gray-500">DTDC Ref No.: </span>
+                                <span className="font-semibold text-gray-800">{dtdcReference}</span>
+                              </div>
+                            )}
+                            {/* <div className="text-xs font-sans">
+                              <span className="text-gray-500">DTDC Tracking URL: </span>
+                              <a
+                                href={dtdcReference ? `https://track.dtdc.com/ctbs-tracking/customerInterface.tr?submitName=showTrackingDetail&consignmentNo=${dtdcReference}` : "https://track.dtdc.com/"}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[#E31E24] hover:underline"
+                              >
+                                https://track.dtdc.com/
+                              </a>
+                            </div> */}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1386,11 +1449,10 @@ export default function OrderDetailPage() {
                                             e.stopPropagation();
                                             handleRevokeAccess(item.permission_id, item.download_name || item.product_name);
                                           }}
-                                          className={`text-[11px] font-semibold px-3 py-1 rounded transition-colors font-sans flex items-center gap-1 ${
-                                            revokingPermissionId === item.permission_id
+                                          className={`text-[11px] font-semibold px-3 py-1 rounded transition-colors font-sans flex items-center gap-1 ${revokingPermissionId === item.permission_id
                                               ? "text-gray-400 border border-gray-250 bg-gray-50 cursor-not-allowed"
                                               : "text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 cursor-pointer"
-                                          }`}
+                                            }`}
                                         >
                                           {revokingPermissionId === item.permission_id ? (
                                             <>
@@ -1546,11 +1608,10 @@ export default function OrderDetailPage() {
                                             key={`${product.product_id}-${idx}`}
                                             onMouseEnter={() => setHoveredSearchResultIndex(idx)}
                                             onClick={() => handleSelectProduct(product)}
-                                            className={`px-3.5 py-2.5 text-xs cursor-pointer select-none font-sans transition-colors leading-snug ${
-                                              isHovered
+                                            className={`px-3.5 py-2.5 text-xs cursor-pointer select-none font-sans transition-colors leading-snug ${isHovered
                                                 ? "bg-[#e31e24] text-white"
                                                 : "text-gray-800 hover:bg-gray-50"
-                                            }`}
+                                              }`}
                                           >
                                             <div className="font-medium text-xs break-words">
                                               {displayLabel}
@@ -1573,11 +1634,10 @@ export default function OrderDetailPage() {
                               type="button"
                               disabled={isGrantingAccess || selectedDownloadProducts.length === 0}
                               onClick={handleGrantAccess}
-                              className={`text-xs font-semibold px-3.5 py-2 rounded transition-colors font-sans shrink-0 h-[36px] flex items-center gap-1.5 ${
-                                selectedDownloadProducts.length === 0 || isGrantingAccess
+                              className={`text-xs font-semibold px-3.5 py-2 rounded transition-colors font-sans shrink-0 h-[36px] flex items-center gap-1.5 ${selectedDownloadProducts.length === 0 || isGrantingAccess
                                   ? "text-gray-400 border border-gray-250 bg-gray-50 cursor-not-allowed"
                                   : "text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 cursor-pointer"
-                              }`}
+                                }`}
                             >
                               {isGrantingAccess && (
                                 <svg className="animate-spin -ml-0.5 mr-1 h-3.5 w-3.5 text-[#E31E24]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

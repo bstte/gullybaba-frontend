@@ -6,7 +6,7 @@ import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
 import { fetchOrderCategories, fetchOrderMonths, fetchOrders, fetchOrderStatusCounts, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
-import { canViewOrder, canViewOrderStatus } from "@/src/lib/permissions";
+import { canViewOrder, canViewOrderStatus, isAdministrator } from "@/src/lib/permissions";
 
 interface Order {
   id: number;
@@ -268,11 +268,17 @@ export default function OrdersPage() {
   };
 
   // Tabs: "All" plus every status that actually has orders and is permitted (wc-<status> in access_orders), in canonical order
+  const permittedTabs = statusList
+    .filter((s) => (statusCounts[s.value] || 0) > 0 && canViewOrderStatus(profile, s.value))
+    .map((s) => ({ label: s.label, value: s.value, count: statusCounts[s.value] }));
+
+  const permittedTotalCount = isAdministrator(profile)
+    ? totalOrdersCount
+    : permittedTabs.reduce((acc, tab) => acc + (tab.count || 0), 0);
+
   const statusTabs = [
-    { label: "All", value: "all", count: totalOrdersCount },
-    ...statusList
-      .filter((s) => (statusCounts[s.value] || 0) > 0 && canViewOrderStatus(profile, s.value))
-      .map((s) => ({ label: s.label, value: s.value, count: statusCounts[s.value] })),
+    { label: "All", value: "all", count: permittedTotalCount },
+    ...permittedTabs,
   ];
 
   return (

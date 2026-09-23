@@ -203,6 +203,19 @@ export async function previewShiprocket(token: string, id: number | string, tota
   return handleResponse(response, "Failed to build Shiprocket preview");
 }
 
+export async function sendToDtdc(token: string, id: number | string, totalWeight: number) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}/dtdc-send`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ total_weight: totalWeight }),
+  });
+
+  return handleResponse(response, "Failed to send order to DTDC");
+}
+
 export async function fetchTekipostStatus(token: string, id: number | string) {
   const response = await fetch(`${API_URL}/api/orders/local/${id}/tekipost-status`, {
     method: "GET",
