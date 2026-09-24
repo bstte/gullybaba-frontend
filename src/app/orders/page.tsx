@@ -31,6 +31,8 @@ interface Order {
   payment_method_title: string;
   categories: string;
   origin: string;
+  delivered_by?: string;
+  updated_by?: string;
   shipping_method?: string;
   shipping_lines?: Array<{
     id?: number;
@@ -551,13 +553,15 @@ export default function OrdersPage() {
                       <th className="py-3.5 px-4 font-bold">Mobile</th>
                       <th className="py-3.5 px-4 font-bold">Email</th>
                       <th className="py-3.5 px-4 font-bold">Status Change</th>
+                      <th className="py-3.5 px-4 font-bold">Delivered By</th>
+                      <th className="py-3.5 px-4 font-bold">Update By</th>
                       <th className="py-3.5 px-4 font-bold">Origin</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {orders.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="py-12 text-center text-gray-400">
+                        <td colSpan={11} className="py-12 text-center text-gray-400">
                           <div className="flex flex-col items-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-300">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z" />
@@ -641,6 +645,35 @@ export default function OrdersPage() {
                                 {isUpdatingStatus[order.id] ? "..." : "Change"}
                               </button>
                             </div>
+                          </td>
+                          <td className="py-3 px-4 font-sans whitespace-nowrap">
+                            {order.delivered_by ? (
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border font-sans uppercase tracking-wide ${
+                                  order.delivered_by === "Shiprocket"
+                                    ? "bg-purple-50 text-purple-700 border-purple-200"
+                                    : order.delivered_by === "TekiPost"
+                                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                                    : order.delivered_by === "DTDC"
+                                    ? "bg-red-50 text-red-700 border-red-200"
+                                    : "bg-gray-50 text-gray-700 border-gray-200"
+                                }`}
+                              >
+                                {order.delivered_by}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 font-sans whitespace-nowrap">
+                            {order.updated_by ? (
+                              <span className="inline-flex items-center gap-1.5 font-medium text-gray-700">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                {order.updated_by}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-gray-500 font-sans">{order.origin}</td>
                         </tr>
