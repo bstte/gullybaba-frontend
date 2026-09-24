@@ -33,6 +33,7 @@ interface Order {
   origin: string;
   delivered_by?: string;
   updated_by?: string;
+  display_name?: string;
   shipping_method?: string;
   shipping_lines?: Array<{
     id?: number;
