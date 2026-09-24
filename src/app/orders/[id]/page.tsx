@@ -244,11 +244,34 @@ interface LineItem {
   price: string;
   total: string;
   sku: string | null;
+  code?: string;
   category: string;
   image: string | null;
   medium?: string;
+  language?: string;
+  variation_id?: number;
+  session?: string;
+  type?: string;
+  demand?: string;
+  enrollment_no?: string;
+  payment_type?: string;
   product_id?: number;
   meta_data?: { id: number; key: string; value: string }[];
+}
+
+function formatMetaValue(val: string): string {
+  if (!val) return "";
+  const s = String(val).trim();
+  if (s === "type-assignment") return "Type Assignment";
+  if (s === "handwritten-hardcopy") return "Handwritten Hard Copy";
+  if (s === "handwritten-softcopy") return "Handwritten Soft Copy";
+  if (/^[a-z0-9]+(-[a-z0-9]+)+$/i.test(s)) {
+    return s
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 interface FeeLine {
@@ -296,6 +319,7 @@ interface OrderDetail {
   shipping: Address;
   payment_method: string;
   payment_method_title: string;
+  payment_type?: string;
   customer_ip_address: string;
   customer_note: string;
   line_items: LineItem[];
@@ -916,6 +940,8 @@ export default function OrderDetailPage() {
   const dtdcReference = getOrderMeta("_dtdc_reference_number");
   const isDtdcSent = !!dtdcReference || getOrderMeta("dtdc_status") === "Sent";
   const dtdcStatus = dtdcReference || (isDtdcSent ? "Sent" : "Not Sent");
+  const itemsPaymentType = order?.line_items.find((li) => li.payment_type)?.payment_type || "";
+  const paymentTypeDisplay = order?.payment_type || itemsPaymentType || getOrderMeta("Payment Type") || getOrderMeta("_awcdp_deposits_payment_type");
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-50 text-gray-900 font-sans overflow-hidden">
@@ -979,9 +1005,14 @@ export default function OrderDetailPage() {
                         </span>
                       )}
                   </div>
-                  <p className="text-xs text-gray-500 font-sans mt-1">
-                    Payment via {order.payment_method_title || order.payment_method || "—"}.
-                    {order.customer_ip_address && ` Customer IP: ${order.customer_ip_address}`}
+                  <p className="text-xs text-gray-500 font-sans mt-1 flex items-center gap-2 flex-wrap">
+                    <span>Payment via <strong className="text-gray-700 font-medium">{order.payment_method_title || order.payment_method || "—"}</strong>.</span>
+                    {paymentTypeDisplay && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wide">
+                        Payment Type: {paymentTypeDisplay}
+                      </span>
+                    )}
+                    {order.customer_ip_address && <span className="text-gray-400">• Customer IP: {order.customer_ip_address}</span>}
                   </p>
                 </div>
 
@@ -1045,6 +1076,15 @@ export default function OrderDetailPage() {
                               {order.billing.first_name} {order.billing.last_name} (#{order.customer_id}{order.billing.email ? ` – ${order.billing.email}` : ""})
                             </div>
                           </div>
+
+                          {paymentTypeDisplay && (
+                            <div>
+                              <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Payment Type:</div>
+                              <div className="w-full bg-emerald-50/70 border border-emerald-250 rounded px-2.5 py-1.5 text-xs text-emerald-800 font-sans font-bold uppercase tracking-wider">
+                                {paymentTypeDisplay}
+                              </div>
+                            </div>
+                          )}
 
                           {canWeight && (
                             <div>
@@ -1279,16 +1319,33 @@ export default function OrderDetailPage() {
                           </thead>
                           <tbody className="divide-y divide-gray-100">
                             {order.line_items.map((li) => {
-                              const medium = li.medium || (() => {
-                                const m = li.meta_data?.find((x) => ["Medium", "medium", "pa_languages", "Language"].includes(x.key));
+                              const itemCategory = li.category || li.meta_data?.find((x) => x.key.toLowerCase() === "category")?.value || "";
+                              const itemCode = li.code || li.sku || li.meta_data?.find((x) => x.key.toLowerCase() === "code")?.value || "";
+                              const itemVariationId = li.variation_id || Number(li.meta_data?.find((x) => x.key === "_variation_id")?.value || 0);
+                              const itemSession = li.session || li.meta_data?.find((x) => ["session", "pa_assignment-session", "assignment-session"].includes(x.key.toLowerCase()))?.value || "";
+                              const itemType = li.type || li.meta_data?.find((x) => ["type", "pa_assignment-type", "assignment-type"].includes(x.key.toLowerCase()))?.value || "";
+                              const itemDemand = li.demand || li.meta_data?.find((x) => x.key.toLowerCase() === "demand")?.value || "";
+                              const itemLanguage = li.language || li.medium || (() => {
+                                const m = li.meta_data?.find((x) => ["medium", "language", "pa_languages"].includes(x.key.toLowerCase()));
                                 if (!m?.value) return "";
                                 const s = String(m.value).trim().toLowerCase();
                                 if (s === "hindi-medium" || s === "hindi medium" || s === "hindi") return "Hindi";
                                 if (s === "english-medium" || s === "english medium" || s === "english") return "English";
                                 if (s === "sanskrit-medium" || s === "sanskrit medium" || s === "sanskrit") return "Sanskrit";
                                 if (s === "urdu-medium" || s === "urdu medium" || s === "urdu") return "Urdu";
-                                return m.value.replace(/-medium$/i, "").replace(/^./, (c) => c.toUpperCase());
+                                return m.value.replace(/-medium$/i, "").replace(/^./, (c: string) => c.toUpperCase());
                               })();
+                              const itemEnrollment = li.enrollment_no || li.meta_data?.find((x) => x.key.toLowerCase().includes("enrol"))?.value || "";
+                              const itemPaymentType = li.payment_type || li.meta_data?.find((x) => x.key.toLowerCase().includes("payment"))?.value || "";
+
+                              const knownKeys = new Set([
+                                "category", "code", "sku", "_variation_id", "variation_id", "session", "pa_assignment-session",
+                                "assignment-session", "type", "pa_assignment-type", "assignment-type", "demand", "language",
+                                "medium", "pa_languages", "enrollment no.", "enrollment no", "enrolment no", "enrollment_no",
+                                "payment type", "payment_type", "_qty", "_line_total", "_line_subtotal", "_line_tax",
+                                "_line_tax_data", "_tax_class", "_product_id", "_reduced_stock"
+                              ]);
+                              const otherMeta = (li.meta_data || []).filter((m) => !knownKeys.has(m.key.toLowerCase()));
 
                               return (
                                 <tr key={li.id}>
@@ -1300,18 +1357,70 @@ export default function OrderDetailPage() {
                                         className="w-10 h-10 object-cover rounded border border-gray-200 shrink-0 mt-0.5"
                                         onError={(e) => { (e.target as HTMLImageElement).src = "/logo.svg"; }}
                                       />
-                                      <div className="flex flex-col gap-1 pb-2">
-                                        <span className="text-[#0073aa] hover:underline font-medium leading-snug cursor-pointer">{li.name}</span>
-                                        {medium && (
-                                          <div className="text-[11px] text-gray-600 font-normal">
-                                            <span className="font-bold text-gray-700">Medium:</span> {medium}
+                                      <div className="flex flex-col gap-1.5 pb-2 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="text-[#0073aa] hover:underline font-medium leading-snug cursor-pointer">{li.name}</span>
+                                          {itemVariationId > 0 && (
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-700 border border-gray-250 font-mono">
+                                              Variation ID: #{itemVariationId}
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        {/* Metadata pills */}
+                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-sans">
+                                          {itemLanguage && (
+                                            <span className="inline-flex items-center gap-1 text-gray-700 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded text-[10px]">
+                                              <span className="font-semibold text-gray-500">Language:</span>
+                                              <span className="font-medium text-gray-800">{formatMetaValue(itemLanguage)}</span>
+                                            </span>
+                                          )}
+                                          {itemSession && (
+                                            <span className="inline-flex items-center gap-1 text-purple-800 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded text-[10px]">
+                                              <span className="font-semibold text-purple-600">Session:</span>
+                                              <span className="font-medium">{formatMetaValue(itemSession)}</span>
+                                            </span>
+                                          )}
+                                          {itemType && (
+                                            <span className="inline-flex items-center gap-1 text-blue-800 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-[10px]">
+                                              <span className="font-semibold text-blue-600">Type:</span>
+                                              <span className="font-medium">{formatMetaValue(itemType)}</span>
+                                            </span>
+                                          )}
+                                          {itemDemand && (
+                                            <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded text-[10px]">
+                                              <span className="font-semibold text-amber-600">Demand:</span>
+                                              <span className="font-medium">{itemDemand}</span>
+                                            </span>
+                                          )}
+                                          {itemEnrollment && (
+                                            <span className="inline-flex items-center gap-1 text-indigo-800 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px]">
+                                              <span className="font-semibold text-indigo-600">Enrolment No:</span>
+                                              <span className="font-mono font-bold">{itemEnrollment}</span>
+                                            </span>
+                                          )}
+                                          {itemPaymentType && (
+                                            <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px]">
+                                              <span className="font-semibold text-emerald-600">Payment Type:</span>
+                                              <span className="font-bold uppercase tracking-wide">{itemPaymentType}</span>
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        {otherMeta.length > 0 && (
+                                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                            {otherMeta.map((m) => (
+                                              <span key={m.id || m.key} className="text-[10px] text-gray-500 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded font-sans">
+                                                <span className="font-medium text-gray-600">{m.key}:</span> {m.value}
+                                              </span>
+                                            ))}
                                           </div>
                                         )}
                                       </div>
                                     </div>
                                   </td>
-                                  <td className="py-3 px-4 font-sans text-gray-600 align-top pt-3">{li.category || "—"}</td>
-                                  <td className="py-3 px-4 font-sans text-gray-600 align-top pt-3">{li.sku || "—"}</td>
+                                  <td className="py-3 px-4 font-sans text-gray-700 align-top pt-3 font-medium">{itemCategory || "—"}</td>
+                                  <td className="py-3 px-4 font-sans text-gray-700 font-mono align-top pt-3">{itemCode || "—"}</td>
                                   <td className="py-3 px-4 font-sans text-gray-700 text-right align-top pt-3">{order.currency_symbol}{parseFloat(li.price).toFixed(2)}</td>
                                   <td className="py-3 px-4 font-sans text-gray-700 text-right align-top pt-3">× {li.quantity}</td>
                                   <td className="py-3 px-4 font-sans text-gray-900 font-semibold text-right align-top pt-3">{order.currency_symbol}{parseFloat(li.total).toFixed(2)}</td>
