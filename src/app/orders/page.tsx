@@ -667,10 +667,10 @@ export default function OrdersPage() {
                             )}
                           </td>
                           <td className="py-3 px-4 font-sans whitespace-nowrap">
-                            {order.updated_by ? (
+                            {order.display_name || order.updated_by ? (
                               <span className="inline-flex items-center gap-1.5 font-medium text-gray-700">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                {order.updated_by}
+                                {order.display_name || order.updated_by}
                               </span>
                             ) : (
                               <span className="text-gray-400">—</span>

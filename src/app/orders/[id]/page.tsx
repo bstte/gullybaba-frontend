@@ -180,10 +180,10 @@ function CalendarPopover({ value, onChange, onClose }: CalendarPopoverProps) {
               type="button"
               onClick={() => selectDay(day)}
               className={`h-6 w-full flex items-center justify-center rounded text-xs transition-colors ${currentIsSelected
-                  ? "bg-[#E31E24] text-white font-bold"
-                  : currentIsToday
-                    ? "border border-amber-400 bg-amber-50/60 font-bold text-gray-900"
-                    : "text-gray-800 hover:bg-gray-100"
+                ? "bg-[#E31E24] text-white font-bold"
+                : currentIsToday
+                  ? "border border-amber-400 bg-amber-50/60 font-bold text-gray-900"
+                  : "text-gray-800 hover:bg-gray-100"
                 }`}
             >
               {day}
@@ -1560,8 +1560,8 @@ export default function OrderDetailPage() {
                                             handleRevokeAccess(item.permission_id, item.download_name || item.product_name);
                                           }}
                                           className={`text-[11px] font-semibold px-3 py-1 rounded transition-colors font-sans flex items-center gap-1 ${revokingPermissionId === item.permission_id
-                                              ? "text-gray-400 border border-gray-250 bg-gray-50 cursor-not-allowed"
-                                              : "text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 cursor-pointer"
+                                            ? "text-gray-400 border border-gray-250 bg-gray-50 cursor-not-allowed"
+                                            : "text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 cursor-pointer"
                                             }`}
                                         >
                                           {revokingPermissionId === item.permission_id ? (
@@ -1719,8 +1719,8 @@ export default function OrderDetailPage() {
                                             onMouseEnter={() => setHoveredSearchResultIndex(idx)}
                                             onClick={() => handleSelectProduct(product)}
                                             className={`px-3.5 py-2.5 text-xs cursor-pointer select-none font-sans transition-colors leading-snug ${isHovered
-                                                ? "bg-[#e31e24] text-white"
-                                                : "text-gray-800 hover:bg-gray-50"
+                                              ? "bg-[#e31e24] text-white"
+                                              : "text-gray-800 hover:bg-gray-50"
                                               }`}
                                           >
                                             <div className="font-medium text-xs break-words">
@@ -1745,8 +1745,8 @@ export default function OrderDetailPage() {
                               disabled={isGrantingAccess || selectedDownloadProducts.length === 0}
                               onClick={handleGrantAccess}
                               className={`text-xs font-semibold px-3.5 py-2 rounded transition-colors font-sans shrink-0 h-[36px] flex items-center gap-1.5 ${selectedDownloadProducts.length === 0 || isGrantingAccess
-                                  ? "text-gray-400 border border-gray-250 bg-gray-50 cursor-not-allowed"
-                                  : "text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 cursor-pointer"
+                                ? "text-gray-400 border border-gray-250 bg-gray-50 cursor-not-allowed"
+                                : "text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 cursor-pointer"
                                 }`}
                             >
                               {isGrantingAccess && (
