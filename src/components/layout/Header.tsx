@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/src/store/hooks";
 import { logout as logoutAction } from "@/src/store/authSlice";
+import { getDefaultAllowedRoute } from "@/src/lib/permissions";
 
 interface HeaderProps {
   username?: string;
@@ -13,7 +14,7 @@ interface HeaderProps {
 export default function Header({ username, role }: HeaderProps) {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const admin = useAppSelector((state) => state.auth.admin);
+  const { admin, profile } = useAppSelector((state) => state.auth);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const displayName = username || admin?.name || admin?.username || "Admin";
@@ -38,7 +39,7 @@ export default function Header({ username, role }: HeaderProps) {
   return (
     <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between shrink-0 relative z-30 shadow-xs">
       {/* Brand logo/name */}
-      <div className="flex items-center cursor-pointer" onClick={() => router.push("/dashboard")}>
+      <div className="flex items-center cursor-pointer" onClick={() => router.push(getDefaultAllowedRoute(profile))}>
         <img src="/logo.svg" alt="GullyBaba Logo" className="h-8 w-auto object-contain" />
       </div>
 
@@ -77,7 +78,7 @@ export default function Header({ username, role }: HeaderProps) {
             <button
               onClick={() => {
                 setDropdownOpen(false);
-                router.push("/dashboard");
+                router.push(getDefaultAllowedRoute(profile));
               }}
               className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
             >

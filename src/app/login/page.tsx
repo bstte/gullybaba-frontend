@@ -4,25 +4,26 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/src/store/hooks";
 import { hydrate, loadAuthFromStorage, loginUser } from "@/src/store/authSlice";
+import { getDefaultAllowedRoute } from "@/src/lib/permissions";
 
 export default function LoginPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { token, status } = useAppSelector((state) => state.auth);
+  const { token, status, profile } = useAppSelector((state) => state.auth);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  // Redirect to dashboard if already logged in
+  // Redirect to first allowed section if already logged in
   useEffect(() => {
     if (token) {
-      router.push("/dashboard");
+      router.push(getDefaultAllowedRoute(profile));
       return;
     }
     const stored = loadAuthFromStorage();
     if (stored) {
       dispatch(hydrate(stored));
-      router.push("/dashboard");
+      router.push(getDefaultAllowedRoute(stored.profile));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
@@ -32,8 +33,9 @@ export default function LoginPage() {
     setError("");
 
     try {
-      await dispatch(loginUser({ username, password })).unwrap();
-      router.push("/dashboard");
+      const result = await dispatch(loginUser({ username, password })).unwrap();
+      const targetRoute = getDefaultAllowedRoute(result.profile);
+      router.push(targetRoute);
     } catch (err: any) {
       setError(err.message || "Invalid credentials");
     }

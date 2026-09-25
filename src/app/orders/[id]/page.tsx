@@ -6,7 +6,7 @@ import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
 import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, revokeOrderDownloadAccess, searchDownloadableProducts, sendToDtdc, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
-import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canSendToDtdc, canSendToShiprocket, canSendToTekipost, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
+import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canSendToDtdc, canSendToShiprocket, canSendToTekipost, canViewDownloadableProduct, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
 
 interface DownloadItem {
   permission_id: number;
@@ -58,6 +58,29 @@ function formatDownloadProductLabel(product: any): string {
   const filePart = fileName ? ` (${fileName})` : "";
 
   return `${idPart}${codePart}${namePart}${filePart}`;
+}
+
+function formatNoteDate(dateStr: string): string {
+  if (!dateStr) return "";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const datePart = d.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+    const timePart = d
+      .toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })
+      .toLowerCase();
+    return `${datePart} at ${timePart}`;
+  } catch {
+    return dateStr;
+  }
 }
 
 interface CalendarPopoverProps {
@@ -340,6 +363,8 @@ interface OrderDetail {
     average_order_value: string;
   };
   meta_data: { id: number; key: string; value: string }[];
+  updated_by?: string;
+  display_name?: string;
 }
 
 export default function OrderDetailPage() {
@@ -355,6 +380,7 @@ export default function OrderDetailPage() {
   const canDeleteNote = canDeleteOrderNote(profile);
   const canView = canViewOrder(profile);
   const canProfileLink = canViewProfileLink(profile);
+  const canDownloadableProduct = canViewDownloadableProduct(profile);
   const router = useRouter();
   const params = useParams();
   const orderId = params?.id as string;
@@ -675,7 +701,9 @@ export default function OrderDetailPage() {
     if (!ready || !token || !orderId) return;
     loadOrder(token);
     loadNotes(token);
-    loadDownloads(token);
+    if (canDownloadableProduct) {
+      loadDownloads(token);
+    }
     fetchOrderStatusCounts(token).then((res) => {
       if (res.success) setStatusList(res.statusList || []);
     }).catch(() => { });
@@ -1482,7 +1510,8 @@ export default function OrderDetailPage() {
                     </div>
 
                     {/* Downloadable product permissions */}
-                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    {canDownloadableProduct && (
+                      <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
                       <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-150 bg-gray-50/50 rounded-t-lg">
                         <h4 className="text-xs font-bold text-gray-700 font-sans">Downloadable product permissions</h4>
                         <div className="flex items-center gap-2 text-gray-400">
@@ -1761,7 +1790,8 @@ export default function OrderDetailPage() {
                         </div>
                       )}
                     </div>
-                  </div>
+                  )}
+                </div>
 
                   {/* Right column */}
                   <div className="space-y-4">
@@ -1784,7 +1814,9 @@ export default function OrderDetailPage() {
                             <option value="">Choose an action...</option>
                             <option value="send_order_details">Send order details to customer</option>
                             <option value="resend_order_notification">Resend new order notification</option>
-                            <option value="regenerate_download_permissions">Regenerate download permissions</option>
+                            {canDownloadableProduct && (
+                              <option value="regenerate_download_permissions">Regenerate download permissions</option>
+                            )}
                           </select>
                           <button
                             type="button"
@@ -1870,41 +1902,53 @@ export default function OrderDetailPage() {
                           ) : notes.length === 0 ? (
                             <div className="text-xs text-gray-400 font-sans">No order notes available yet.</div>
                           ) : (
-                            notes.map((note) => (
-                              <div
-                                key={note.id}
-                                className={`rounded px-3 py-2 text-xs font-sans ${note.is_customer_note
-                                  ? "bg-blue-50 border border-blue-100"
-                                  : note.is_system_note
-                                    ? "bg-purple-50 border border-purple-100"
-                                    : "bg-gray-50 border border-gray-150"
-                                  }`}
-                              >
-                                <div className="text-gray-800 whitespace-pre-wrap">{note.content}</div>
-                                <div className="mt-1.5 text-[10px] text-gray-500">
-                                  {new Date(note.date).toLocaleString("en-US", {
-                                    month: "long",
-                                    day: "numeric",
-                                    year: "numeric",
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                    hour12: true,
-                                  })}
-                                  {canDeleteNote && (
-                                    <>
-                                      {" — "}
+                            notes.map((note) => {
+                              const authorName = (note.author || "").trim();
+                              const isGenericAuthor =
+                                !authorName ||
+                                authorName.toLowerCase() === "woocommerce" ||
+                                authorName.toLowerCase() === "system" ||
+                                authorName.toLowerCase() === "wordpress";
+                              const displayAuthor = !isGenericAuthor
+                                ? authorName
+                                : /order status changed/i.test(note.content || "") && order?.updated_by
+                                  ? order.updated_by
+                                  : null;
+
+                              return (
+                                <div
+                                  key={note.id}
+                                  className={`rounded px-3 py-2 text-xs font-sans ${note.is_customer_note
+                                    ? "bg-blue-50 border border-blue-100"
+                                    : !displayAuthor && (note.is_system_note || isGenericAuthor)
+                                      ? "bg-purple-50 border border-purple-100"
+                                      : "bg-gray-50 border border-gray-150"
+                                    }`}
+                                >
+                                  <div className="text-gray-800 whitespace-pre-wrap">{note.content}</div>
+                                  <div className="mt-1.5 text-[11px] text-gray-500 font-sans flex items-center flex-wrap gap-x-1">
+                                    <span
+                                      className="border-b border-dotted border-gray-400 cursor-help"
+                                      title={new Date(note.date).toLocaleString()}
+                                    >
+                                      {formatNoteDate(note.date)}
+                                    </span>
+                                    {displayAuthor && (
+                                      <span>by {displayAuthor}</span>
+                                    )}
+                                    {canDeleteNote && (
                                       <button
                                         onClick={() => handleDeleteNote(note.id)}
                                         disabled={deletingNoteId === note.id}
-                                        className="text-[#E31E24] hover:underline font-semibold disabled:text-gray-300"
+                                        className="text-[#a00] hover:text-[#ba0000] underline ml-1 cursor-pointer font-normal disabled:text-gray-300"
                                       >
                                         {deletingNoteId === note.id ? "Deleting…" : "Delete note"}
                                       </button>
-                                    </>
-                                  )}
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            ))
+                              );
+                            })
                           )}
                         </div>
                       </div>

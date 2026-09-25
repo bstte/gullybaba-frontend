@@ -6,7 +6,13 @@ import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
 import { fetchOrderCategories, fetchOrderMonths, fetchOrders, fetchOrderStatusCounts, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
-import { canViewOrder, canViewOrderStatus, isAdministrator } from "@/src/lib/permissions";
+import {
+  canViewOrder,
+  canViewOrderStatus,
+  hasOrdersAccess,
+  getDefaultAllowedRoute,
+  isAdministrator,
+} from "@/src/lib/permissions";
 
 interface Order {
   id: number;
@@ -139,13 +145,22 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    if (!ready || !token) return;
-    loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), paymentMethod);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, token, currentPage, selectedStatus, paymentMethod]);
+    if (!ready || !profile) return;
+    if (!hasOrdersAccess(profile)) {
+      router.replace(getDefaultAllowedRoute(profile));
+    }
+  }, [ready, profile, router]);
 
   useEffect(() => {
     if (!ready || !token) return;
+    if (profile && !hasOrdersAccess(profile)) return;
+    loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), paymentMethod);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, token, profile, currentPage, selectedStatus, paymentMethod]);
+
+  useEffect(() => {
+    if (!ready || !token) return;
+    if (profile && !hasOrdersAccess(profile)) return;
     loadStatusCounts(token);
     fetchOrderCategories(token).then((res) => {
       if (res.success) setCategoryOptions(res.categories || []);
@@ -154,7 +169,7 @@ export default function OrdersPage() {
       if (res.success) setMonthOptions(res.months || []);
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, token]);
+  }, [ready, token, profile]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

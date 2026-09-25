@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
 import {
@@ -13,6 +14,7 @@ import {
   fetchUsers,
 } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
+import { getDefaultAllowedRoute } from "@/src/lib/permissions";
 
 interface RecentOrder {
   id: number;
@@ -55,7 +57,14 @@ const getStatusBadgeClass = (status: string) => {
 };
 
 export default function DashboardOverviewPage() {
+  const router = useRouter();
   const { token, admin, profile, ready } = useAuthGuard();
+
+  useEffect(() => {
+    if (!ready || !profile) return;
+    router.replace(getDefaultAllowedRoute(profile));
+  }, [ready, profile, router]);
+
   const [stats, setStats] = useState<StatCard[]>([
     { name: "Users", path: "/users", icon: STAT_ICONS.Users, count: null },
     { name: "Orders", path: "/orders", icon: STAT_ICONS.Orders, count: null },

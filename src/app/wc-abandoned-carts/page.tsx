@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
 import { fetchWcAbandonedCarts, updateWcAbandonedCartNote } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
+import { hasWcAbandonedCartAccess, getDefaultAllowedRoute } from "@/src/lib/permissions";
 
 interface WcCartItem {
   name: string;
@@ -45,7 +47,8 @@ interface WcAbandonedCart {
 }
 
 export default function WcAbandonedCartsPage() {
-  const { token, ready } = useAuthGuard();
+  const router = useRouter();
+  const { token, ready, profile } = useAuthGuard();
   const [carts, setCarts] = useState<WcAbandonedCart[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -96,10 +99,18 @@ export default function WcAbandonedCartsPage() {
   };
 
   useEffect(() => {
+    if (!ready || !profile) return;
+    if (!hasWcAbandonedCartAccess(profile)) {
+      router.replace(getDefaultAllowedRoute(profile));
+    }
+  }, [ready, profile, router]);
+
+  useEffect(() => {
     if (!ready || !token) return;
+    if (profile && !hasWcAbandonedCartAccess(profile)) return;
     loadData(token, currentPage, searchQuery, status);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, token, currentPage, status]);
+  }, [ready, token, profile, currentPage, status]);
 
   const triggerApplyFilters = () => {
     if (!token) return;

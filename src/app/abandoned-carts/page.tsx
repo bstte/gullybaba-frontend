@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
 import { fetchAbandonedCarts, updateAbandonedCartNote } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
+import { hasAbandonedCartAccess, getDefaultAllowedRoute } from "@/src/lib/permissions";
 
 interface AbandonedCart {
   id: string;
@@ -15,7 +17,8 @@ interface AbandonedCart {
 }
 
 export default function AbandonedCartsPage() {
-  const { token, ready } = useAuthGuard();
+  const router = useRouter();
+  const { token, ready, profile } = useAuthGuard();
   const [carts, setCarts] = useState<AbandonedCart[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -65,10 +68,18 @@ export default function AbandonedCartsPage() {
   };
 
   useEffect(() => {
+    if (!ready || !profile) return;
+    if (!hasAbandonedCartAccess(profile)) {
+      router.replace(getDefaultAllowedRoute(profile));
+    }
+  }, [ready, profile, router]);
+
+  useEffect(() => {
     if (!ready || !token) return;
+    if (profile && !hasAbandonedCartAccess(profile)) return;
     loadData(token, currentPage, searchQuery, productType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, token, currentPage, productType]);
+  }, [ready, token, profile, currentPage, productType]);
 
   const triggerApplyFilters = () => {
     if (!token) return;
