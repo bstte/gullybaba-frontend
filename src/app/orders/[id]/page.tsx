@@ -1347,33 +1347,36 @@ export default function OrderDetailPage() {
                           </thead>
                           <tbody className="divide-y divide-gray-100">
                             {order.line_items.map((li) => {
-                              const itemCategory = li.category || li.meta_data?.find((x) => x.key.toLowerCase() === "category")?.value || "";
-                              const itemCode = li.code || li.sku || li.meta_data?.find((x) => x.key.toLowerCase() === "code")?.value || "";
+                              const itemCategory = li.category || li.meta_data?.find((x) => (x.key || "").toLowerCase() === "category")?.value || "";
+                              const itemCode = li.code || li.sku || li.meta_data?.find((x) => ["code", "sku", "_sku"].includes((x.key || "").toLowerCase()))?.value || "";
                               const itemVariationId = li.variation_id || Number(li.meta_data?.find((x) => x.key === "_variation_id")?.value || 0);
-                              const itemSession = li.session || li.meta_data?.find((x) => ["session", "pa_assignment-session", "assignment-session"].includes(x.key.toLowerCase()))?.value || "";
-                              const itemType = li.type || li.meta_data?.find((x) => ["type", "pa_assignment-type", "assignment-type"].includes(x.key.toLowerCase()))?.value || "";
-                              const itemDemand = li.demand || li.meta_data?.find((x) => x.key.toLowerCase() === "demand")?.value || "";
-                              const itemLanguage = li.language || li.medium || (() => {
-                                const m = li.meta_data?.find((x) => ["medium", "language", "pa_languages"].includes(x.key.toLowerCase()));
-                                if (!m?.value) return "";
-                                const s = String(m.value).trim().toLowerCase();
-                                if (s === "hindi-medium" || s === "hindi medium" || s === "hindi") return "Hindi";
-                                if (s === "english-medium" || s === "english medium" || s === "english") return "English";
-                                if (s === "sanskrit-medium" || s === "sanskrit medium" || s === "sanskrit") return "Sanskrit";
-                                if (s === "urdu-medium" || s === "urdu medium" || s === "urdu") return "Urdu";
-                                return m.value.replace(/-medium$/i, "").replace(/^./, (c: string) => c.toUpperCase());
+                              const itemSession = li.session || li.meta_data?.find((x) => ["session", "pa_assignment-session", "assignment-session"].includes((x.key || "").toLowerCase()))?.value || "";
+                              const itemType = li.type || li.meta_data?.find((x) => ["type", "pa_assignment-type", "assignment-type"].includes((x.key || "").toLowerCase()))?.value || "";
+                              const itemDemand = li.demand || li.meta_data?.find((x) => (x.key || "").toLowerCase() === "demand")?.value || "";
+                              const itemMedium = li.medium || (() => {
+                                const m = li.meta_data?.find((x) => ["medium", "language", "pa_languages", "select medium"].includes((x.key || "").toLowerCase()));
+                                if (!m?.value) return li.language || "";
+                                const s = String(m.value).trim();
+                                const lower = s.toLowerCase();
+                                if (lower === "hindi-medium" || lower === "hindi medium" || lower === "hindi") return "Hindi";
+                                if (lower === "english-medium" || lower === "english medium" || lower === "english") return "English";
+                                if (lower === "sanskrit-medium" || lower === "sanskrit medium" || lower === "sanskrit") return "Sanskrit";
+                                if (lower === "urdu-medium" || lower === "urdu medium" || lower === "urdu") return "Urdu";
+                                if (lower === "bengali-medium" || lower === "bengali medium" || lower === "bengali") return "Bengali";
+                                if (lower === "punjabi-medium" || lower === "punjabi medium" || lower === "punjabi") return "Punjabi";
+                                return s.replace(/-medium$/i, "").replace(/^./, (c: string) => c.toUpperCase());
                               })();
-                              const itemEnrollment = li.enrollment_no || li.meta_data?.find((x) => x.key.toLowerCase().includes("enrol"))?.value || "";
-                              const itemPaymentType = li.payment_type || li.meta_data?.find((x) => x.key.toLowerCase().includes("payment"))?.value || "";
+                              const itemEnrollment = li.enrollment_no || li.meta_data?.find((x) => (x.key || "").toLowerCase().includes("enrol"))?.value || "";
+                              const itemPaymentType = li.payment_type || li.meta_data?.find((x) => (x.key || "").toLowerCase().includes("payment"))?.value || "";
 
                               const knownKeys = new Set([
-                                "category", "code", "sku", "_variation_id", "variation_id", "session", "pa_assignment-session",
+                                "category", "code", "sku", "_sku", "_variation_id", "variation_id", "session", "pa_assignment-session",
                                 "assignment-session", "type", "pa_assignment-type", "assignment-type", "demand", "language",
-                                "medium", "pa_languages", "enrollment no.", "enrollment no", "enrolment no", "enrollment_no",
+                                "medium", "pa_languages", "select medium", "enrollment no.", "enrollment no", "enrolment no", "enrollment_no",
                                 "payment type", "payment_type", "_qty", "_line_total", "_line_subtotal", "_line_tax",
                                 "_line_tax_data", "_tax_class", "_product_id", "_reduced_stock"
                               ]);
-                              const otherMeta = (li.meta_data || []).filter((m) => !knownKeys.has(m.key.toLowerCase()));
+                              const otherMeta = (li.meta_data || []).filter((m) => !knownKeys.has((m.key || "").toLowerCase()));
 
                               return (
                                 <tr key={li.id}>
@@ -1385,7 +1388,7 @@ export default function OrderDetailPage() {
                                         className="w-10 h-10 object-cover rounded border border-gray-200 shrink-0 mt-0.5"
                                         onError={(e) => { (e.target as HTMLImageElement).src = "/logo.svg"; }}
                                       />
-                                      <div className="flex flex-col gap-1.5 pb-2 min-w-0">
+                                      <div className="flex flex-col gap-0.5 pb-2 min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
                                           <span className="text-[#0073aa] hover:underline font-medium leading-snug cursor-pointer">{li.name}</span>
                                           {itemVariationId > 0 && (
@@ -1395,60 +1398,70 @@ export default function OrderDetailPage() {
                                           )}
                                         </div>
 
-                                        {/* Metadata pills */}
-                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-sans">
-                                          {itemLanguage && (
-                                            <span className="inline-flex items-center gap-1 text-gray-700 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded text-[10px]">
-                                              <span className="font-semibold text-gray-500">Language:</span>
-                                              <span className="font-medium text-gray-800">{formatMetaValue(itemLanguage)}</span>
-                                            </span>
+                                        {/* Metadata list (Medium, Category, Code, etc.) formatted matching WooCommerce style */}
+                                        <div className="flex flex-col gap-0.5 mt-0.5 text-[11px] font-sans text-gray-600">
+                                          {itemMedium && (
+                                            <div className="flex items-baseline gap-1.5">
+                                              <span className="font-bold text-gray-700">Medium:</span>
+                                              <span>{itemMedium}</span>
+                                            </div>
+                                          )}
+                                          {itemCategory && (
+                                            <div className="flex items-baseline gap-1.5">
+                                              <span className="font-bold text-gray-700">Category:</span>
+                                              <span>{itemCategory}</span>
+                                            </div>
+                                          )}
+                                          {itemCode && (
+                                            <div className="flex items-baseline gap-1.5">
+                                              <span className="font-bold text-gray-700">Code:</span>
+                                              <span>{itemCode}</span>
+                                            </div>
                                           )}
                                           {itemSession && (
-                                            <span className="inline-flex items-center gap-1 text-purple-800 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded text-[10px]">
-                                              <span className="font-semibold text-purple-600">Session:</span>
-                                              <span className="font-medium">{formatMetaValue(itemSession)}</span>
-                                            </span>
+                                            <div className="flex items-baseline gap-1.5">
+                                              <span className="font-bold text-gray-700">Session:</span>
+                                              <span>{formatMetaValue(itemSession)}</span>
+                                            </div>
                                           )}
                                           {itemType && (
-                                            <span className="inline-flex items-center gap-1 text-blue-800 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-[10px]">
-                                              <span className="font-semibold text-blue-600">Type:</span>
-                                              <span className="font-medium">{formatMetaValue(itemType)}</span>
-                                            </span>
+                                            <div className="flex items-baseline gap-1.5">
+                                              <span className="font-bold text-gray-700">Type:</span>
+                                              <span>{formatMetaValue(itemType)}</span>
+                                            </div>
                                           )}
                                           {itemDemand && (
-                                            <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded text-[10px]">
-                                              <span className="font-semibold text-amber-600">Demand:</span>
-                                              <span className="font-medium">{itemDemand}</span>
-                                            </span>
+                                            <div className="flex items-baseline gap-1.5">
+                                              <span className="font-bold text-gray-700">Demand:</span>
+                                              <span>{itemDemand}</span>
+                                            </div>
                                           )}
                                           {itemEnrollment && (
-                                            <span className="inline-flex items-center gap-1 text-indigo-800 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px]">
-                                              <span className="font-semibold text-indigo-600">Enrolment No:</span>
-                                              <span className="font-mono font-bold">{itemEnrollment}</span>
-                                            </span>
+                                            <div className="flex items-baseline gap-1.5">
+                                              <span className="font-bold text-gray-700">Enrolment No:</span>
+                                              <span className="font-mono">{itemEnrollment}</span>
+                                            </div>
                                           )}
                                           {itemPaymentType && (
-                                            <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px]">
-                                              <span className="font-semibold text-emerald-600">Payment Type:</span>
-                                              <span className="font-bold uppercase tracking-wide">{itemPaymentType}</span>
-                                            </span>
+                                            <div className="flex items-baseline gap-1.5">
+                                              <span className="font-bold text-gray-700">Payment Type:</span>
+                                              <span className="uppercase">{itemPaymentType}</span>
+                                            </div>
+                                          )}
+                                          {otherMeta.length > 0 && (
+                                            otherMeta.map((m) => (
+                                              <div key={m.id || m.key} className="flex items-baseline gap-1.5">
+                                                <span className="font-bold text-gray-700">{m.key}:</span>
+                                                <span>{m.value}</span>
+                                              </div>
+                                            ))
                                           )}
                                         </div>
-
-                                        {otherMeta.length > 0 && (
-                                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                            {otherMeta.map((m) => (
-                                              <span key={m.id || m.key} className="text-[10px] text-gray-500 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded font-sans">
-                                                <span className="font-medium text-gray-600">{m.key}:</span> {m.value}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        )}
                                       </div>
                                     </div>
                                   </td>
                                   <td className="py-3 px-4 font-sans text-gray-700 align-top pt-3 font-medium">{itemCategory || "—"}</td>
-                                  <td className="py-3 px-4 font-sans text-gray-700 font-mono align-top pt-3">{itemCode || "—"}</td>
+                                  <td className="py-3 px-4 font-sans text-gray-700 align-top pt-3">{itemCode || "—"}</td>
                                   <td className="py-3 px-4 font-sans text-gray-700 text-right align-top pt-3">{order.currency_symbol}{parseFloat(li.price).toFixed(2)}</td>
                                   <td className="py-3 px-4 font-sans text-gray-700 text-right align-top pt-3">× {li.quantity}</td>
                                   <td className="py-3 px-4 font-sans text-gray-900 font-semibold text-right align-top pt-3">{order.currency_symbol}{parseFloat(li.total).toFixed(2)}</td>
