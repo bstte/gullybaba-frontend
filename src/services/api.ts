@@ -356,6 +356,32 @@ export async function deleteOrderNote(token: string, id: number | string, noteId
   return handleResponse(response, "Failed to delete order note");
 }
 
+export async function updateOrder(
+  token: string,
+  orderId: number,
+  payload: {
+    status?: string;
+    billing?: object;
+    shipping?: object;
+    customer_note?: string;
+    meta_data?: Array<{ key: string; value: any }>;
+    _speed_post?: string;
+    _speed_tracking_id?: string;
+    [key: string]: any;
+  }
+) {
+  const response = await fetch(`${API_URL}/api/orders/${orderId}`, {
+    method: "PUT",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  return handleResponse(response, "Failed to update order");
+}
+
 export async function updateOrderStatus(token: string, orderId: number, status: string) {
   const response = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
     method: "PUT",

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
-import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, revokeOrderDownloadAccess, searchDownloadableProducts, sendToDtdc, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
+import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, revokeOrderDownloadAccess, searchDownloadableProducts, sendToDtdc, updateOrder, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
 import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canSendToDtdc, canSendToShiprocket, canSendToTekipost, canViewDownloadableProduct, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
 
@@ -403,6 +403,10 @@ export default function OrderDetailPage() {
   const [isSendingDtdc, setIsSendingDtdc] = useState(false);
   const [isFetchingTekipostStatus, setIsFetchingTekipostStatus] = useState(false);
   const [isFetchingShiprocketStatus, setIsFetchingShiprocketStatus] = useState(false);
+  const [speedPost, setSpeedPost] = useState<string>("no");
+  const [initialSpeedPost, setInitialSpeedPost] = useState<string>("no");
+  const [speedTrackingId, setSpeedTrackingId] = useState<string>("");
+  const [initialSpeedTrackingId, setInitialSpeedTrackingId] = useState<string>("");
   const [orderAction, setOrderAction] = useState("");
   const [notes, setNotes] = useState<OrderNote[]>([]);
   const [isLoadingNotes, setIsLoadingNotes] = useState(false);
@@ -449,6 +453,14 @@ export default function OrderDetailPage() {
       if (res.success) {
         setOrder(res.order);
         setSelectedStatus(res.order.status);
+        const spMeta = res.order.meta_data?.find((m: any) => m.key === "_speed_post")?.value;
+        const spTrack = res.order.meta_data?.find((m: any) => m.key === "_speed_tracking_id")?.value;
+        const curSp = spMeta && String(spMeta).toLowerCase() === "yes" ? "yes" : "no";
+        const curTrack = spTrack ? String(spTrack) : "";
+        setSpeedPost(curSp);
+        setInitialSpeedPost(curSp);
+        setSpeedTrackingId(curTrack);
+        setInitialSpeedTrackingId(curTrack);
       }
     } catch (err: any) {
       setLoadError(err.message || "Failed to load order");
@@ -731,6 +743,14 @@ export default function OrderDetailPage() {
       console.log(`[tekipost] payload for order #${order.id}:`, res.payload);
       console.log(`[tekipost] submission response for order #${order.id}:`, res.submission);
       if (res.warnings?.length) console.warn(`[tekipost] preview warnings for order #${order.id}:`, res.warnings);
+      // Immediately reflect sent status in UI
+      setOrder((prev) => {
+        if (!prev) return prev;
+        const meta = prev.meta_data.filter((m) => m.key !== "tekipost_status");
+        meta.push({ id: 0, key: "tekipost_status", value: "Sent" });
+        return { ...prev, status: "completed", delivered_by: "TekiPost", meta_data: meta };
+      });
+      setSelectedStatus("completed");
       showNotification(res.message || `Order #${order.id} sent to TekiPost successfully.`, "success");
       await loadOrder(token);
     } catch (err: any) {
@@ -752,6 +772,14 @@ export default function OrderDetailPage() {
       console.log(`[shiprocket] payload for order #${order.id}:`, res.payload);
       console.log(`[shiprocket] submission response for order #${order.id}:`, res.submission);
       if (res.warnings?.length) console.warn(`[shiprocket] preview warnings for order #${order.id}:`, res.warnings);
+      // Immediately reflect sent status in UI
+      setOrder((prev) => {
+        if (!prev) return prev;
+        const meta = prev.meta_data.filter((m) => m.key !== "shiprocket_status");
+        meta.push({ id: 0, key: "shiprocket_status", value: "Sent" });
+        return { ...prev, status: "completed", delivered_by: "Shiprocket", meta_data: meta };
+      });
+      setSelectedStatus("completed");
       showNotification(res.message || `Order #${order.id} sent to Shiprocket successfully.`, "success");
       await loadOrder(token);
     } catch (err: any) {
@@ -777,6 +805,18 @@ export default function OrderDetailPage() {
       const res = await sendToDtdc(token, order.id, Number(weight));
       console.log(`[dtdc] submission response for order #${order.id}:`, res);
       if (res.warnings?.length) console.warn(`[dtdc] warnings for order #${order.id}:`, res.warnings);
+      const returnedRef = res.reference_number || "";
+      // Immediately reflect sent status and reference number in UI
+      setOrder((prev) => {
+        if (!prev) return prev;
+        const meta = prev.meta_data.filter((m) => m.key !== "_dtdc_reference_number" && m.key !== "dtdc_status");
+        meta.push({ id: 0, key: "dtdc_status", value: "Sent" });
+        if (returnedRef) {
+          meta.push({ id: 0, key: "_dtdc_reference_number", value: returnedRef });
+        }
+        return { ...prev, status: "completed", delivered_by: "DTDC", meta_data: meta };
+      });
+      setSelectedStatus("completed");
       showNotification(res.message || `Order #${order.id} sent to DTDC successfully.`, "success");
       await loadOrder(token);
     } catch (err: any) {
@@ -815,7 +855,7 @@ export default function OrderDetailPage() {
   };
 
   // Single Update button for the order: saves the status change (if any) together with any
-  // billing/shipping edits currently open, then re-fetches the order so the page reflects
+  // billing/shipping edits and Speed Post changes, then re-fetches the order so the page reflects
   // exactly what's now saved on WordPress/WooCommerce.
   const handleUpdate = async () => {
     if (!token || !order) return;
@@ -826,23 +866,34 @@ export default function OrderDetailPage() {
 
     const statusChanged = !!selectedStatus && selectedStatus !== order.status;
     const hasAddressChanges = !!(addressPayload.billing || addressPayload.shipping);
+    const speedPostChanged = speedPost !== initialSpeedPost || speedTrackingId !== initialSpeedTrackingId;
 
-    if (!statusChanged && !hasAddressChanges) {
+    if (!statusChanged && !hasAddressChanges && !speedPostChanged) {
       showNotification("No changes to update.", "error");
       return;
     }
 
     try {
       setIsSaving(true);
-      if (statusChanged) {
-        await updateOrderStatus(token, order.id, selectedStatus);
+      const updatePayload: any = {};
+      if (statusChanged) updatePayload.status = selectedStatus;
+      if (addressPayload.billing) updatePayload.billing = addressPayload.billing;
+      if (addressPayload.shipping) updatePayload.shipping = addressPayload.shipping;
+      if (speedPostChanged || speedPost === "yes" || speedTrackingId) {
+        updatePayload.meta_data = [
+          { key: "_speed_post", value: speedPost },
+          { key: "_speed_tracking_id", value: speedTrackingId },
+        ];
+        updatePayload._speed_post = speedPost;
+        updatePayload._speed_tracking_id = speedTrackingId;
       }
-      if (hasAddressChanges) {
-        await updateOrderAddress(token, order.id, addressPayload);
-      }
+
+      await updateOrder(token, order.id, updatePayload);
       showNotification(`Order #${order.id} updated successfully.`, "success");
       setIsEditingBilling(false);
       setIsEditingShipping(false);
+      setInitialSpeedPost(speedPost);
+      setInitialSpeedTrackingId(speedTrackingId);
       await loadOrder(token);
     } catch (err: any) {
       showNotification(err.message || "Failed to update order", "error");
@@ -967,7 +1018,7 @@ export default function OrderDetailPage() {
   const tekipostStatus = getOrderMeta("tekipost_status") === "Sent" ? "Sent" : "Not Sent";
   const dtdcReference = getOrderMeta("_dtdc_reference_number");
   const isDtdcSent = !!dtdcReference || getOrderMeta("dtdc_status") === "Sent";
-  const dtdcStatus = dtdcReference || (isDtdcSent ? "Sent" : "Not Sent");
+  const dtdcStatus = isDtdcSent ? "Sent" : "Not Sent";
   const itemsPaymentType = order?.line_items.find((li) => li.payment_type)?.payment_type || "";
   const paymentTypeDisplay = order?.payment_type || itemsPaymentType || getOrderMeta("Payment Type") || getOrderMeta("_awcdp_deposits_payment_type");
 
@@ -1177,13 +1228,35 @@ export default function OrderDetailPage() {
                               <div className="text-xs font-bold text-gray-600 font-sans">Speed Post Details</div>
                               <div>
                                 <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Speed Post:</div>
-                                <select disabled className="w-full bg-gray-100 border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-400 font-sans cursor-not-allowed">
-                                  <option>No</option>
+                                <select
+                                  value={speedPost}
+                                  onChange={(e) => setSpeedPost(e.target.value)}
+                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 font-sans focus:outline-none focus:border-[#E31E24]"
+                                >
+                                  <option value="no">No</option>
+                                  <option value="yes">Yes</option>
                                 </select>
+                              </div>
+                              <div>
+                                <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Speed Tracking ID:</div>
+                                <input
+                                  type="text"
+                                  value={speedTrackingId}
+                                  onChange={(e) => setSpeedTrackingId(e.target.value)}
+                                  placeholder="Enter Speed Tracking ID"
+                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 font-sans focus:outline-none focus:border-[#E31E24]"
+                                />
                               </div>
                               <div className="text-xs font-sans">
                                 <span className="text-gray-500">Speed Post Tracking URL: </span>
-                                <a href="https://www.17track.net/en/" target="_blank" rel="noopener noreferrer" className="text-[#E31E24] hover:underline">https://www.17track.net/en/</a>
+                                <a
+                                  href={speedTrackingId?.trim() ? `https://t.17track.net/en#nums=${encodeURIComponent(speedTrackingId.trim())}` : "https://www.17track.net/en/"}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[#E31E24] hover:underline"
+                                >
+                                  https://www.17track.net/en/
+                                </a>
                               </div>
                             </div>
                           )}
@@ -1305,7 +1378,7 @@ export default function OrderDetailPage() {
                                   {isSendingDtdc ? "Sending…" : "Send to DTDC"}
                                 </button>
                               )}
-                              <span className="text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans text-[#E31E24] border-[#E31E24]">
+                              <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans ${isDtdcSent ? "text-emerald-700 border-emerald-600" : "text-[#E31E24] border-[#E31E24]"}`}>
                                 Status: {dtdcStatus}
                               </span>
                             </div>
