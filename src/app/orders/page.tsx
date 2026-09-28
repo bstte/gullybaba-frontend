@@ -324,7 +324,7 @@ export default function OrdersPage() {
           )}
 
           {/* Page Header */}
-          <div className="bg-white border-b border-gray-200 py-3.5 px-6 flex items-center justify-between shrink-0">
+          <div className="bg-white border-b border-gray-200 py-3.5 px-6 flex items-center justify-between shrink-0 z-10">
             <div className="flex items-center gap-3">
               <h2 className="text-base font-bold text-gray-900 font-sans">Orders</h2>
               {/* <button className="text-[10px] font-bold text-[#E31E24] hover:bg-red-50 border border-[#E31E24] px-2 py-0.5 rounded transition-colors font-sans">
@@ -333,8 +333,10 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* Status Quick Links Tabs */}
-          <div className="bg-white border-b border-gray-200 px-6 py-2 shrink-0 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+          {/* Scrollable Container: Everything after Orders title scrolls together */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col">
+            {/* Status Quick Links Tabs */}
+            <div className="bg-white border-b border-gray-200 px-6 py-2 shrink-0 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
             {statusTabs.map((tab, idx) => {
               const isActive = selectedStatus === tab.value;
               return (
@@ -543,9 +545,9 @@ export default function OrdersPage() {
           </div>
 
           {/* Main Table Area */}
-          <div className="flex-1 overflow-auto p-6">
-            <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-              <div className="overflow-x-auto relative min-h-[300px]">
+          <div className="p-6 flex-1 flex flex-col">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden flex flex-col">
+              <div className="overflow-x-auto relative min-h-[300px] flex-1">
                 {isLoading && (
                   <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
                     <div className="flex items-center gap-2">
@@ -561,23 +563,21 @@ export default function OrdersPage() {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider">
-                      <th className="py-3.5 px-4 font-bold">Order</th>
-                      <th className="py-3.5 px-4 font-bold">Date</th>
-                      <th className="py-3.5 px-4 font-bold">Status</th>
-                      <th className="py-3.5 px-4 font-bold">Total</th>
-                      <th className="py-3.5 px-4 font-bold">Category</th>
-                      <th className="py-3.5 px-4 font-bold">Mobile</th>
-                      <th className="py-3.5 px-4 font-bold">Email</th>
-                      <th className="py-3.5 px-4 font-bold">Status Change</th>
-                      <th className="py-3.5 px-4 font-bold">Delivered By</th>
-                      <th className="py-3.5 px-4 font-bold">Update By</th>
-                      <th className="py-3.5 px-4 font-bold">Origin</th>
+                      <th className="py-3.5 px-4 font-bold min-w-[180px]">Order</th>
+                      <th className="py-3.5 px-4 font-bold whitespace-nowrap">Status</th>
+                      <th className="py-3.5 px-4 font-bold whitespace-nowrap">Total</th>
+                      <th className="py-3.5 px-4 font-bold min-w-[180px]">Category</th>
+                      <th className="py-3.5 px-4 font-bold min-w-[180px]">Contact</th>
+                      <th className="py-3.5 px-4 font-bold w-[120px] whitespace-nowrap">Status Change</th>
+                      <th className="py-3.5 px-4 font-bold whitespace-nowrap">Delivered By</th>
+                      <th className="py-3.5 px-4 font-bold min-w-[160px]">Update By</th>
+                      <th className="py-3.5 px-4 font-bold whitespace-nowrap text-right w-[90px] pr-6">Origin</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {orders.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className="py-12 text-center text-gray-400">
+                        <td colSpan={9} className="py-12 text-center text-gray-400">
                           <div className="flex flex-col items-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-300">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z" />
@@ -601,7 +601,7 @@ export default function OrdersPage() {
                             onClick={() => router.push(`/orders/${order.id}`)}
                             className="hover:bg-gray-50/50 transition-colors cursor-pointer"
                           >
-                            <td className="py-3 px-4 font-sans text-[#E31E24] font-bold">
+                            <td className="py-3 px-4 font-sans text-[#E31E24] font-bold min-w-[180px]">
                               <div className="flex flex-col items-start gap-1">
                                 <div>
                                   #{order.id} {order.billing.first_name} {order.billing.last_name}
@@ -619,35 +619,41 @@ export default function OrdersPage() {
                                 )}
                               </div>
                             </td>
-                          <td className="py-3 px-4 text-gray-600 font-sans">
-                            {new Date(order.date_created).toLocaleDateString(undefined, {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric"
-                            })}
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <div className="flex flex-col items-start gap-1">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border font-sans uppercase tracking-wide ${getStatusBadgeClass(order.status)}`}>
+                                {order.status}
+                              </span>
+                              <span className="text-[11px] text-gray-500 font-sans whitespace-nowrap">
+                                {order.date_created ? new Date(order.date_created).toLocaleDateString("en-GB", {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric"
+                                }) : "—"}
+                              </span>
+                            </div>
                           </td>
-                          <td className="py-3 px-4">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border font-sans uppercase tracking-wide ${getStatusBadgeClass(order.status)}`}>
-                              {order.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-gray-900 font-bold font-sans">
+                          <td className="py-3 px-4 text-gray-900 font-bold font-sans whitespace-nowrap">
                             ₹{parseFloat(order.total).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                           </td>
-                          <td className="py-3 px-4 text-gray-600 font-sans max-w-[150px] truncate" title={order.categories}>
-                            {order.categories}
+                          <td className="py-3 px-4 text-gray-600 font-sans min-w-[180px] break-words whitespace-normal leading-snug">
+                            {order.categories || "—"}
                           </td>
-                          <td className="py-3 px-4 text-gray-600 font-mono">{order.billing.phone || "—"}</td>
-                          <td className="py-3 px-4 text-gray-500 font-sans lowercase">{order.billing.email || "—"}</td>
-                          <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center gap-1.5">
+                          <td className="py-3 px-4 font-sans min-w-[180px]">
+                            <div className="flex flex-col items-start gap-0.5">
+                              <span className="text-gray-700 font-mono text-xs">{order.billing.phone || "—"}</span>
+                              <span className="text-gray-500 text-[11px] lowercase break-all">{order.billing.email || "—"}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 w-[120px]" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-col items-stretch gap-1 w-[110px]">
                               <select
                                 value={rowStatusActions[order.id] || order.status}
                                 onChange={(e) => {
                                   const val = e.target.value;
                                   setRowStatusActions(prev => ({ ...prev, [order.id]: val }));
                                 }}
-                                className="bg-gray-50 border border-gray-250 rounded px-1 py-0.5 text-[10px] text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
+                                className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-[11px] text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
                               >
                                 {statusList.map((s) => (
                                   <option key={s.value} value={s.value}>{s.label}</option>
@@ -656,7 +662,7 @@ export default function OrdersPage() {
                               <button
                                 onClick={() => handleStatusChangeSubmit(order.id)}
                                 disabled={isUpdatingStatus[order.id]}
-                                className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-2 py-0.5 rounded transition-colors font-sans whitespace-nowrap shadow-2xs"
+                                className="w-full text-[11px] font-semibold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 py-1 rounded transition-colors font-sans whitespace-nowrap shadow-xs text-center"
                               >
                                 {isUpdatingStatus[order.id] ? "..." : "Change"}
                               </button>
@@ -681,7 +687,7 @@ export default function OrdersPage() {
                               <span className="text-gray-400">—</span>
                             )}
                           </td>
-                          <td className="py-3 px-4 font-sans whitespace-nowrap">
+                          <td className="py-3 px-4 font-sans min-w-[160px]">
                             {order.display_name || order.updated_by ? (
                               <span className="inline-flex items-center gap-1.5 font-medium text-gray-700">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
@@ -691,7 +697,7 @@ export default function OrdersPage() {
                               <span className="text-gray-400">—</span>
                             )}
                           </td>
-                          <td className="py-3 px-4 text-gray-500 font-sans">{order.origin}</td>
+                          <td className="py-3 px-4 text-gray-500 font-sans whitespace-nowrap text-right w-[90px] pr-6">{order.origin || "—"}</td>
                         </tr>
                         );
                       })
@@ -699,38 +705,39 @@ export default function OrdersPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination Footer */}
+              <div className="bg-white border-t border-gray-200 py-3.5 px-6 flex items-center justify-between shrink-0">
+                <div className="text-xs text-gray-500 font-sans font-medium">
+                  Showing <span className="font-semibold text-gray-900">{orders.length}</span> of <span className="font-semibold text-gray-900">{totalItems}</span> orders
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 border border-gray-250 px-3 py-1.5 rounded shadow-xs transition-colors font-sans"
+                  >
+                    Previous
+                  </button>
+
+                  <span className="text-xs text-gray-600 font-medium font-sans px-2">
+                    Page <strong className="text-gray-900 font-bold">{currentPage}</strong> of <strong className="text-gray-900 font-bold">{totalPages}</strong>
+                  </span>
+
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 border border-gray-250 px-3 py-1.5 rounded shadow-xs transition-colors font-sans"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-
-          {/* Pagination Footer */}
-          <div className="bg-white border-t border-gray-200 py-3.5 px-6 flex items-center justify-between shrink-0">
-            <div className="text-xs text-gray-500 font-sans font-medium">
-              Showing <span className="font-semibold text-gray-900">{orders.length}</span> of <span className="font-semibold text-gray-900">{totalItems}</span> orders
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 border border-gray-250 px-3 py-1.5 rounded shadow-xs transition-colors font-sans"
-              >
-                Previous
-              </button>
-
-              <span className="text-xs text-gray-600 font-medium font-sans px-2">
-                Page <strong className="text-gray-900 font-bold">{currentPage}</strong> of <strong className="text-gray-900 font-bold">{totalPages}</strong>
-              </span>
-
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 border border-gray-250 px-3 py-1.5 rounded shadow-xs transition-colors font-sans"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        </main>
+        </div>
+      </main>
       </div>
     </div>
   );
