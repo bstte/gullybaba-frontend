@@ -1863,7 +1863,15 @@ export default function OrderDetailPage() {
                     <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-2">
                       <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Customer history</h4>
                       <div className="flex justify-between text-xs font-sans">
-                        <span className="text-gray-500">Total orders</span>
+                        <span className="text-gray-500 flex items-center gap-1">
+                          Total orders
+                          <span
+                            className="inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] rounded-full bg-gray-200 text-gray-600 font-bold cursor-help"
+                            title="Total number of orders for this customer, excluding pending payment, failed, and cancelled orders, including the current one."
+                          >
+                            i
+                          </span>
+                        </span>
                         <span className="font-semibold text-gray-900">{order.customer_stats.total_orders}</span>
                       </div>
                       <div className="flex justify-between text-xs font-sans">
