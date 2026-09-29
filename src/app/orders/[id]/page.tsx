@@ -1938,14 +1938,13 @@ export default function OrderDetailPage() {
 
                     <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-3 font-sans">
                       <h4 className="text-xs font-bold text-gray-700 font-sans">Customer history</h4>
-                      
+
                       <div className="space-y-0.5">
                         <div className="text-xs text-gray-600 flex items-center gap-1.5 font-medium">
                           <span>Total orders</span>
                           <div className="relative group inline-flex items-center">
                             <span
                               className="inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] rounded-full bg-gray-200 text-gray-600 font-bold cursor-help"
-                              title="Total number of orders for this customer, excluding cancelled orders, including the current one."
                             >
                               ?
                             </span>
@@ -1964,7 +1963,6 @@ export default function OrderDetailPage() {
                           <div className="relative group inline-flex items-center">
                             <span
                               className="inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] rounded-full bg-gray-200 text-gray-600 font-bold cursor-help"
-                              title="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."
                             >
                               ?
                             </span>

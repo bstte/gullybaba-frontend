@@ -93,7 +93,9 @@ export async function fetchOrders(
   start_date = "",
   end_date = "",
   category = "",
-  payment_method = ""
+  payment_method = "",
+  demand_type_filter = "",
+  speed_post = ""
 ) {
   const queryParams = new URLSearchParams({
     page: page.toString(),
@@ -105,6 +107,9 @@ export async function fetchOrders(
     category,
     payment_method
   });
+
+  if (demand_type_filter) queryParams.set("demand_type_filter", demand_type_filter);
+  if (speed_post) queryParams.set("speed_post", speed_post);
 
   const response = await fetch(`${API_URL}/api/orders?${queryParams.toString()}`, {
     method: "GET",

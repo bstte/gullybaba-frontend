@@ -71,7 +71,10 @@ export default function OrdersPage() {
   const [endDate, setEndDate] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [categorySearchText, setCategorySearchText] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentMethodInput, setPaymentMethodInput] = useState("");
+  const [appliedPaymentMethod, setAppliedPaymentMethod] = useState("");
+  const [demandTypeInput, setDemandTypeInput] = useState("");
+  const [appliedDemandType, setAppliedDemandType] = useState("");
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
@@ -110,7 +113,8 @@ export default function OrdersPage() {
     startD: string,
     endD: string,
     catQ: string,
-    payM: string
+    payM: string = appliedPaymentMethod,
+    demandVal: string = appliedDemandType
   ) => {
     try {
       setIsLoading(true);
@@ -123,7 +127,8 @@ export default function OrdersPage() {
         startD,
         endD,
         catQ,
-        payM
+        payM,
+        demandVal
       );
       if (res.success) {
         setOrders(res.orders);
@@ -154,9 +159,9 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!ready || !token) return;
     if (profile && !hasOrdersAccess(profile)) return;
-    loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), paymentMethod);
+    loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), appliedPaymentMethod, appliedDemandType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, token, profile, currentPage, selectedStatus, paymentMethod]);
+  }, [ready, token, profile, currentPage, selectedStatus, appliedPaymentMethod, appliedDemandType]);
 
   useEffect(() => {
     if (!ready || !token) return;
@@ -199,7 +204,7 @@ export default function OrdersPage() {
     setEndDate(end);
     if (!token) return;
     setCurrentPage(1);
-    loadData(token, 1, selectedStatus, searchQuery, start, end, selectedCategories.join(","), paymentMethod);
+    loadData(token, 1, selectedStatus, searchQuery, start, end, selectedCategories.join(","), appliedPaymentMethod, appliedDemandType);
   };
 
   const toggleCategory = (category: string) => {
@@ -217,9 +222,11 @@ export default function OrdersPage() {
   );
 
   const triggerApplyFilters = () => {
+    setAppliedPaymentMethod(paymentMethodInput);
+    setAppliedDemandType(demandTypeInput);
     if (!token) return;
     setCurrentPage(1);
-    loadData(token, 1, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), paymentMethod);
+    loadData(token, 1, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), paymentMethodInput, demandTypeInput);
   };
 
   const clearFilters = () => {
@@ -228,11 +235,14 @@ export default function OrdersPage() {
     setSelectedMonth("0");
     setSelectedCategories([]);
     setCategorySearchText("");
-    setPaymentMethod("");
+    setPaymentMethodInput("");
+    setAppliedPaymentMethod("");
+    setDemandTypeInput("");
+    setAppliedDemandType("");
     setSearchQuery("");
     if (!token) return;
     setCurrentPage(1);
-    loadData(token, 1, selectedStatus, "", "", "", "", "");
+    loadData(token, 1, selectedStatus, "", "", "", "", "", "");
   };
 
   const handleStatusChangeSubmit = async (orderId: number) => {
@@ -247,7 +257,7 @@ export default function OrdersPage() {
       if (res.success) {
         showNotification(`Order #${orderId} status changed to ${newStatus} successfully!`, "success");
         // Reload page data and refresh the status tab counts
-        await loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), paymentMethod);
+        await loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), appliedPaymentMethod, appliedDemandType);
         await loadStatusCounts(token);
       }
     } catch (err: any) {
@@ -294,9 +304,21 @@ export default function OrdersPage() {
     ? totalOrdersCount
     : permittedTabs.reduce((acc, tab) => acc + (tab.count || 0), 0);
 
-  const statusTabs = [
+  const regularStatusTabs = permittedTabs.filter((t) => t.value !== "trash");
+  const trashTab = permittedTabs.find((t) => t.value === "trash") || (statusCounts["trash"] > 0 ? { label: "Trash", value: "trash", count: statusCounts["trash"] } : null);
+
+  const specialFilterTabs: { label: string; value: string; count?: number }[] = [
+    { label: "Handwritten Scan Copy", value: "handwritten-scan-copy" },
+    { label: "Handwritten Hard Copy Via Courier", value: "handwritten-hard-copy-via-courier" },
+    { label: "Assignment Not Available", value: "assignment-not-available" },
+    { label: "Speed Post", value: "speed-post" },
+  ];
+
+  const statusTabs: { label: string; value: string; count?: number }[] = [
     { label: "All", value: "all", count: permittedTotalCount },
-    ...permittedTabs,
+    ...regularStatusTabs,
+    ...specialFilterTabs,
+    ...(trashTab ? [trashTab] : []),
   ];
 
   return (
@@ -351,7 +373,7 @@ export default function OrdersPage() {
                       : "text-gray-600 hover:text-[#E31E24]"
                       }`}
                   >
-                    {tab.label} ({tab.count.toLocaleString("en-IN")})
+                    {tab.label}{tab.count !== undefined ? ` (${tab.count.toLocaleString("en-IN")})` : ""}
                   </button>
                   {idx < statusTabs.length - 1 && (
                     <span className="text-gray-300 mx-2">|</span>
@@ -414,8 +436,8 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            {/* Row 2: Advanced filters (Date range, Code, Category, Payment Type) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Row 2: Advanced filters (Date range, Code, Category, Payment Type, Demand Type) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
               {/* Date range filter */}
               <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5">
@@ -523,8 +545,8 @@ export default function OrdersPage() {
               <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5">
                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider font-sans">Payment Type Filter</span>
                 <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  value={paymentMethodInput}
+                  onChange={(e) => setPaymentMethodInput(e.target.value)}
                   className="w-full bg-white border border-gray-250 px-2.5 py-1 text-xs rounded outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans"
                 >
                   <option value="">Payment Type (All)</option>
@@ -539,7 +561,28 @@ export default function OrdersPage() {
                 </button>
               </div>
 
-          
+              {/* Demand Type Filter */}
+              <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider font-sans">Demand Type Filter</span>
+                <select
+                  name="demand_type_filter"
+                  id="demand_type_filter"
+                  value={demandTypeInput}
+                  onChange={(e) => setDemandTypeInput(e.target.value)}
+                  className="w-full bg-white border border-gray-250 px-2.5 py-1 text-xs rounded outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans"
+                >
+                  <option value="">Select Demand Type</option>
+                  <option value="Handwritten Scan Copy">Handwritten Scan Copy</option>
+                  <option value="Handwritten Hard Copy Via Courier">Handwritten Hard Copy Via Courier</option>
+                  <option value="1">Not Available</option>
+                </select>
+                <button
+                  onClick={triggerApplyFilters}
+                  className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] hover:bg-red-50 px-3 py-1 rounded transition-colors font-sans whitespace-nowrap self-start"
+                >
+                  Filter
+                </button>
+              </div>
 
             </div>
           </div>

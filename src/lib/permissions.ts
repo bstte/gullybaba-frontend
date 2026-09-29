@@ -143,7 +143,8 @@ export function canViewProfileLink(profile: CustomerProfile | null | undefined):
 
 // Gates a status tab/filter on the orders list page (wc-processing, wc-completed, ...).
 export function canViewOrderStatus(profile: CustomerProfile | null | undefined, statusValue: string): boolean {
-  return hasOrdersFlag(profile, `wc-${statusValue}`);
+  if (isAdministrator(profile)) return true;
+  return hasOrdersFlag(profile, `wc-${statusValue}`) || hasOrdersFlag(profile, statusValue);
 }
 
 // Gates the "Downloadable product permissions" section on the order detail page.
