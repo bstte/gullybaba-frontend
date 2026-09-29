@@ -733,6 +733,10 @@ export default function OrderDetailPage() {
 
   const handleSendToTekipost = async () => {
     if (!token || !order) return;
+    if (tekipostStatus === "Sent") {
+      showNotification("This order has already been sent to TekiPost.", "error");
+      return;
+    }
     if (!weight || Number(weight) <= 0) {
       showNotification("Enter a valid weight before sending to TekiPost.", "error");
       return;
@@ -762,6 +766,10 @@ export default function OrderDetailPage() {
 
   const handleSendToShiprocket = async () => {
     if (!token || !order) return;
+    if (shiprocketStatus === "Sent") {
+      showNotification("This order has already been sent to Shiprocket.", "error");
+      return;
+    }
     if (!weight || Number(weight) <= 0) {
       showNotification("Enter a valid weight before sending to Shiprocket.", "error");
       return;
@@ -1086,11 +1094,7 @@ export default function OrderDetailPage() {
                   </div>
                   <p className="text-xs text-gray-500 font-sans mt-1 flex items-center gap-2 flex-wrap">
                     <span>Payment via <strong className="text-gray-700 font-medium">{order.payment_method_title || order.payment_method || "—"}</strong>.</span>
-                    {paymentTypeDisplay && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wide">
-                        Payment Type: {paymentTypeDisplay}
-                      </span>
-                    )}
+
                     {order.customer_ip_address && <span className="text-gray-400">• Customer IP: {order.customer_ip_address}</span>}
                   </p>
                 </div>
@@ -1156,14 +1160,7 @@ export default function OrderDetailPage() {
                             </div>
                           </div>
 
-                          {paymentTypeDisplay && (
-                            <div>
-                              <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Payment Type:</div>
-                              <div className="w-full bg-emerald-50/70 border border-emerald-250 rounded px-2.5 py-1.5 text-xs text-emerald-800 font-sans font-bold uppercase tracking-wider">
-                                {paymentTypeDisplay}
-                              </div>
-                            </div>
-                          )}
+
 
                           {canWeight && (
                             <div>
@@ -1182,7 +1179,7 @@ export default function OrderDetailPage() {
                             {canShiprocket && (
                               <button
                                 onClick={handleSendToShiprocket}
-                                disabled={isSendingShiprocket || isLoadingWeight}
+                                disabled={isSendingShiprocket || isLoadingWeight || shiprocketStatus === "Sent"}
                                 className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
                               >
                                 {isSendingShiprocket ? "Building…" : "Send to Shiprocket"}
@@ -1226,38 +1223,44 @@ export default function OrderDetailPage() {
                           {canSpeedPost && (
                             <div className="mt-1 bg-gray-50 border border-gray-200 rounded p-3 space-y-2">
                               <div className="text-xs font-bold text-gray-600 font-sans">Speed Post Details</div>
-                              <div>
-                                <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Speed Post:</div>
-                                <select
-                                  value={speedPost}
-                                  onChange={(e) => setSpeedPost(e.target.value)}
-                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 font-sans focus:outline-none focus:border-[#E31E24]"
-                                >
-                                  <option value="no">No</option>
-                                  <option value="yes">Yes</option>
-                                </select>
+                              <div className={speedPost?.toLowerCase() === "yes" ? "grid grid-cols-2 gap-2" : ""}>
+                                <div>
+                                  <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Speed Post:</div>
+                                  <select
+                                    value={speedPost}
+                                    onChange={(e) => setSpeedPost(e.target.value)}
+                                    className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 font-sans focus:outline-none focus:border-[#E31E24]"
+                                  >
+                                    <option value="no">No</option>
+                                    <option value="yes">Yes</option>
+                                  </select>
+                                </div>
+                                {speedPost?.toLowerCase() === "yes" && (
+                                  <div>
+                                    <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Speed Tracking ID:</div>
+                                    <input
+                                      type="text"
+                                      value={speedTrackingId}
+                                      onChange={(e) => setSpeedTrackingId(e.target.value)}
+                                      placeholder="Enter Speed Tracking ID"
+                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 font-sans focus:outline-none focus:border-[#E31E24]"
+                                    />
+                                  </div>
+                                )}
                               </div>
-                              <div>
-                                <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Speed Tracking ID:</div>
-                                <input
-                                  type="text"
-                                  value={speedTrackingId}
-                                  onChange={(e) => setSpeedTrackingId(e.target.value)}
-                                  placeholder="Enter Speed Tracking ID"
-                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 font-sans focus:outline-none focus:border-[#E31E24]"
-                                />
-                              </div>
-                              <div className="text-xs font-sans">
-                                <span className="text-gray-500">Speed Post Tracking URL: </span>
-                                <a
-                                  href={speedTrackingId?.trim() ? `https://t.17track.net/en#nums=${encodeURIComponent(speedTrackingId.trim())}` : "https://www.17track.net/en/"}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[#E31E24] hover:underline"
-                                >
-                                  https://www.17track.net/en/
-                                </a>
-                              </div>
+                              {speedPost?.toLowerCase() === "yes" && (
+                                <div className="text-xs font-sans">
+                                  <span className="text-gray-500">Speed Post Tracking URL: </span>
+                                  <a
+                                    href={speedTrackingId?.trim() ? `https://t.17track.net/en#nums=${encodeURIComponent(speedTrackingId.trim())}` : "https://www.17track.net/en/"}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#E31E24] hover:underline"
+                                  >
+                                    https://www.17track.net/en/
+                                  </a>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1291,7 +1294,7 @@ export default function OrderDetailPage() {
                               {canTekipost && (
                                 <button
                                   onClick={handleSendToTekipost}
-                                  disabled={isSendingTekipost || isLoadingWeight}
+                                  disabled={isSendingTekipost || isLoadingWeight || tekipostStatus === "Sent"}
                                   className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
                                 >
                                   {isSendingTekipost ? "Building…" : "Send to Tekipost"}
@@ -1598,286 +1601,286 @@ export default function OrderDetailPage() {
                     {/* Downloadable product permissions */}
                     {canDownloadableProduct && (
                       <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                      <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-150 bg-gray-50/50 rounded-t-lg">
-                        <h4 className="text-xs font-bold text-gray-700 font-sans">Downloadable product permissions</h4>
-                        <div className="flex items-center gap-2 text-gray-400">
-                          <button
-                            type="button"
-                            title="Downloadable product permissions allow customers to download digital products purchased in this order."
-                            className="w-4 h-4 flex items-center justify-center rounded-full text-[11px] font-bold text-gray-400 hover:text-gray-600 hover:bg-gray-200"
-                          >
-                            ?
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setIsDownloadsBoxOpen(!isDownloadsBoxOpen)}
-                            className="p-0.5 hover:text-gray-600 transition-colors"
-                            title={isDownloadsBoxOpen ? "Collapse" : "Expand"}
-                          >
-                            <svg viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 transition-transform ${isDownloadsBoxOpen ? "" : "rotate-180"}`}>
-                              <path d="M10 6l-5 5h10l-5-5z" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setIsDownloadsBoxOpen(!isDownloadsBoxOpen)}
-                            className="p-0.5 hover:text-gray-600 transition-colors"
-                            title={isDownloadsBoxOpen ? "Collapse" : "Expand"}
-                          >
-                            <svg viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 transition-transform ${isDownloadsBoxOpen ? "" : "rotate-180"}`}>
-                              <path d="M10 14l5-5H5l5 5z" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-
-                      {isDownloadsBoxOpen && (
-                        <div className="p-4 space-y-3 font-sans">
-                          {isLoadingDownloads ? (
-                            <div className="text-xs text-gray-400 py-3">Loading downloadable permissions…</div>
-                          ) : downloads.length === 0 ? (
-                            <div className="text-xs text-gray-500 py-2 italic">
-                              No downloadable product permissions for this order yet.
-                            </div>
-                          ) : (
-                            <div className="space-y-3">
-                              {downloads.map((item) => {
-                                const isExpanded = Boolean(expandedDownloadIds[item.permission_id]);
-                                const fileName = getFileName(item.file_url) || item.download_name;
-                                return (
-                                  <div
-                                    key={item.permission_id}
-                                    className="border border-gray-200 rounded bg-white shadow-xs overflow-visible relative"
-                                  >
-                                    {/* Permission Item Header */}
-                                    <div className="bg-gray-50/75 border-b border-gray-200 px-3 py-2 flex items-center justify-between gap-2 rounded-t">
-                                      <div
-                                        className="text-xs font-bold text-gray-800 font-sans truncate select-none cursor-pointer flex-1"
-                                        onClick={() => toggleDownloadItem(item.permission_id)}
-                                        title={`#${item.product_id} — ${item.product_name} — ${item.download_name}: ${fileName} — Downloaded ${item.download_count} ${item.download_count === 1 ? "time" : "times"}`}
-                                      >
-                                        #{item.product_id} — {item.product_name} — {item.download_name}: {fileName} — Downloaded {item.download_count} {item.download_count === 1 ? "time" : "times"}
-                                      </div>
-                                      <div className="flex items-center gap-2 shrink-0">
-                                        <button
-                                          type="button"
-                                          onClick={() => toggleDownloadItem(item.permission_id)}
-                                          className="text-gray-400 hover:text-gray-600 p-0.5 text-[10px]"
-                                          title={isExpanded ? "Collapse item" : "Expand item"}
-                                        >
-                                          {isExpanded ? "▲" : "▼"}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          disabled={revokingPermissionId === item.permission_id}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleRevokeAccess(item.permission_id, item.download_name || item.product_name);
-                                          }}
-                                          className={`text-[11px] font-semibold px-3 py-1 rounded transition-colors font-sans flex items-center gap-1 ${revokingPermissionId === item.permission_id
-                                            ? "text-gray-400 border border-gray-250 bg-gray-50 cursor-not-allowed"
-                                            : "text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 cursor-pointer"
-                                            }`}
-                                        >
-                                          {revokingPermissionId === item.permission_id ? (
-                                            <>
-                                              <svg className="animate-spin h-3 w-3 text-[#E31E24]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                                              </svg>
-                                              <span>Revoking...</span>
-                                            </>
-                                          ) : (
-                                            "Revoke access"
-                                          )}
-                                        </button>
-                                      </div>
-                                    </div>
-
-                                    {/* Permission Item Body (when expanded) */}
-                                    {isExpanded && (
-                                      <div className="p-4 bg-white grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
-                                        <div>
-                                          <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
-                                            Downloads remaining
-                                          </label>
-                                          <input
-                                            type="text"
-                                            defaultValue={item.downloads_remaining ?? ""}
-                                            className="w-full sm:w-28 bg-white border border-gray-300 rounded px-2.5 py-1.5 text-xs text-gray-800 font-sans outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-[#E31E24]"
-                                          />
-                                        </div>
-
-                                        <div className="relative z-30 calendar-popover-container">
-                                          <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
-                                            Access expires
-                                          </label>
-                                          <input
-                                            type="text"
-                                            readOnly
-                                            value={accessExpiresMap[item.permission_id] || ""}
-                                            placeholder="Never"
-                                            onClick={() => setActiveCalendarId(activeCalendarId === item.permission_id ? null : item.permission_id)}
-                                            className="w-full sm:w-36 bg-white border border-gray-300 rounded px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-500 font-sans outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-[#E31E24] cursor-pointer"
-                                          />
-                                          {activeCalendarId === item.permission_id && (
-                                            <CalendarPopover
-                                              value={accessExpiresMap[item.permission_id] || ""}
-                                              onChange={(newDate) => {
-                                                setAccessExpiresMap((prev) => ({
-                                                  ...prev,
-                                                  [item.permission_id]: newDate,
-                                                }));
-                                              }}
-                                              onClose={() => setActiveCalendarId(null)}
-                                            />
-                                          )}
-                                        </div>
-
-                                        <div>
-                                          <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
-                                            Customer download link
-                                          </label>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleCopyLink(item)}
-                                            className="text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-1.5 rounded transition-colors font-sans"
-                                          >
-                                            {copiedDownloadId === item.permission_id ? "Copied!" : "Copy link"}
-                                          </button>
-                                        </div>
-
-                                        <div>
-                                          <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
-                                            Customer download log
-                                          </label>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleOpenReport(item)}
-                                            className="inline-block text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-1.5 rounded transition-colors font-sans cursor-pointer"
-                                          >
-                                            View report
-                                          </button>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          {/* Search and Grant access row */}
-                          <div className="pt-2 border-t border-gray-100 flex items-start gap-2">
-                            <div ref={searchContainerRef} className="relative z-30 flex-1 max-w-lg">
-                              {/* Multi-select box (tags + input) */}
-                              <div
-                                onClick={() => searchInputRef.current?.focus()}
-                                className="min-h-[36px] p-1.5 flex flex-wrap items-center gap-1.5 border border-gray-300 rounded bg-white cursor-text focus-within:border-[#E31E24] focus-within:ring-1 focus-within:ring-[#E31E24]"
-                              >
-                                {selectedDownloadProducts.map((p) => (
-                                  <span
-                                    key={p.product_id}
-                                    className="inline-flex items-center gap-1.5 bg-[#f0f0f1] border border-gray-300 text-gray-800 text-xs px-2.5 py-1 rounded font-sans max-w-full"
-                                    title={p.display_label}
-                                  >
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleRemoveSelectedProduct(p.product_id);
-                                      }}
-                                      className="text-gray-500 hover:text-red-600 font-bold text-sm leading-none"
-                                    >
-                                      ×
-                                    </button>
-                                    <span className="truncate max-w-[340px] font-medium">{p.display_label}</span>
-                                  </span>
-                                ))}
-                                <input
-                                  ref={searchInputRef}
-                                  type="text"
-                                  value={downloadSearchQuery}
-                                  onChange={(e) => setDownloadSearchQuery(e.target.value)}
-                                  onFocus={() => setIsDownloadSearchFocused(true)}
-                                  placeholder={selectedDownloadProducts.length === 0 ? "Search for a downloadable product..." : ""}
-                                  className="flex-1 min-w-[140px] bg-transparent text-xs text-gray-800 placeholder-gray-400 font-sans outline-none px-1 py-0.5"
-                                />
-                              </div>
-
-                              {/* Dropdown Popover (opens upward above input) */}
-                              {isDownloadSearchFocused && (
-                                downloadSearchQuery.trim().length < 3 ? (
-                                  <div className="absolute left-0 bottom-full mb-2 w-full bg-white border border-gray-300 rounded-md shadow-xl z-50 p-3 text-xs text-gray-600 font-sans">
-                                    Please enter 3 or more characters
-                                  </div>
-                                ) : (
-                                  <div className="absolute left-0 bottom-full mb-2 w-full sm:min-w-[620px] max-w-3xl max-h-72 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-2xl z-50 font-sans divide-y divide-gray-150">
-                                    {isSearchingDownloads ? (
-                                      <div className="p-3.5 text-xs text-gray-500 font-sans flex items-center gap-2">
-                                        <svg className="animate-spin h-3.5 w-3.5 text-[#E31E24]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                                        </svg>
-                                        <span>Searching downloadable products…</span>
-                                      </div>
-                                    ) : downloadSearchResults.length === 0 ? (
-                                      <div className="p-3.5 text-xs text-gray-500 font-sans">No downloadable products found.</div>
-                                    ) : (
-                                      downloadSearchResults.map((product, idx) => {
-                                        const displayLabel = formatDownloadProductLabel(product);
-                                        const isHovered = hoveredSearchResultIndex === idx;
-
-                                        return (
-                                          <div
-                                            key={`${product.product_id}-${idx}`}
-                                            onMouseEnter={() => setHoveredSearchResultIndex(idx)}
-                                            onClick={() => handleSelectProduct(product)}
-                                            className={`px-3.5 py-2.5 text-xs cursor-pointer select-none font-sans transition-colors leading-snug ${isHovered
-                                              ? "bg-[#e31e24] text-white"
-                                              : "text-gray-800 hover:bg-gray-50"
-                                              }`}
-                                          >
-                                            <div className="font-medium text-xs break-words">
-                                              {displayLabel}
-                                            </div>
-                                            {product.product_categories && (
-                                              <div className={`text-[11px] mt-0.5 truncate ${isHovered ? "text-red-100" : "text-gray-400"}`}>
-                                                Categories: {product.product_categories}
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })
-                                    )}
-                                  </div>
-                                )
-                              )}
-                            </div>
-
+                        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-150 bg-gray-50/50 rounded-t-lg">
+                          <h4 className="text-xs font-bold text-gray-700 font-sans">Downloadable product permissions</h4>
+                          <div className="flex items-center gap-2 text-gray-400">
                             <button
                               type="button"
-                              disabled={isGrantingAccess || selectedDownloadProducts.length === 0}
-                              onClick={handleGrantAccess}
-                              className={`text-xs font-semibold px-3.5 py-2 rounded transition-colors font-sans shrink-0 h-[36px] flex items-center gap-1.5 ${selectedDownloadProducts.length === 0 || isGrantingAccess
-                                ? "text-gray-400 border border-gray-250 bg-gray-50 cursor-not-allowed"
-                                : "text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 cursor-pointer"
-                                }`}
+                              title="Downloadable product permissions allow customers to download digital products purchased in this order."
+                              className="w-4 h-4 flex items-center justify-center rounded-full text-[11px] font-bold text-gray-400 hover:text-gray-600 hover:bg-gray-200"
                             >
-                              {isGrantingAccess && (
-                                <svg className="animate-spin -ml-0.5 mr-1 h-3.5 w-3.5 text-[#E31E24]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                                </svg>
-                              )}
-                              {isGrantingAccess ? "Granting..." : "Grant access"}
+                              ?
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsDownloadsBoxOpen(!isDownloadsBoxOpen)}
+                              className="p-0.5 hover:text-gray-600 transition-colors"
+                              title={isDownloadsBoxOpen ? "Collapse" : "Expand"}
+                            >
+                              <svg viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 transition-transform ${isDownloadsBoxOpen ? "" : "rotate-180"}`}>
+                                <path d="M10 6l-5 5h10l-5-5z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsDownloadsBoxOpen(!isDownloadsBoxOpen)}
+                              className="p-0.5 hover:text-gray-600 transition-colors"
+                              title={isDownloadsBoxOpen ? "Collapse" : "Expand"}
+                            >
+                              <svg viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 transition-transform ${isDownloadsBoxOpen ? "" : "rotate-180"}`}>
+                                <path d="M10 14l5-5H5l5 5z" />
+                              </svg>
                             </button>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+
+                        {isDownloadsBoxOpen && (
+                          <div className="p-4 space-y-3 font-sans">
+                            {isLoadingDownloads ? (
+                              <div className="text-xs text-gray-400 py-3">Loading downloadable permissions…</div>
+                            ) : downloads.length === 0 ? (
+                              <div className="text-xs text-gray-500 py-2 italic">
+                                No downloadable product permissions for this order yet.
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                {downloads.map((item) => {
+                                  const isExpanded = Boolean(expandedDownloadIds[item.permission_id]);
+                                  const fileName = getFileName(item.file_url) || item.download_name;
+                                  return (
+                                    <div
+                                      key={item.permission_id}
+                                      className="border border-gray-200 rounded bg-white shadow-xs overflow-visible relative"
+                                    >
+                                      {/* Permission Item Header */}
+                                      <div className="bg-gray-50/75 border-b border-gray-200 px-3 py-2 flex items-center justify-between gap-2 rounded-t">
+                                        <div
+                                          className="text-xs font-bold text-gray-800 font-sans truncate select-none cursor-pointer flex-1"
+                                          onClick={() => toggleDownloadItem(item.permission_id)}
+                                          title={`#${item.product_id} — ${item.product_name} — ${item.download_name}: ${fileName} — Downloaded ${item.download_count} ${item.download_count === 1 ? "time" : "times"}`}
+                                        >
+                                          #{item.product_id} — {item.product_name} — {item.download_name}: {fileName} — Downloaded {item.download_count} {item.download_count === 1 ? "time" : "times"}
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleDownloadItem(item.permission_id)}
+                                            className="text-gray-400 hover:text-gray-600 p-0.5 text-[10px]"
+                                            title={isExpanded ? "Collapse item" : "Expand item"}
+                                          >
+                                            {isExpanded ? "▲" : "▼"}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={revokingPermissionId === item.permission_id}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleRevokeAccess(item.permission_id, item.download_name || item.product_name);
+                                            }}
+                                            className={`text-[11px] font-semibold px-3 py-1 rounded transition-colors font-sans flex items-center gap-1 ${revokingPermissionId === item.permission_id
+                                              ? "text-gray-400 border border-gray-250 bg-gray-50 cursor-not-allowed"
+                                              : "text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 cursor-pointer"
+                                              }`}
+                                          >
+                                            {revokingPermissionId === item.permission_id ? (
+                                              <>
+                                                <svg className="animate-spin h-3 w-3 text-[#E31E24]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                                </svg>
+                                                <span>Revoking...</span>
+                                              </>
+                                            ) : (
+                                              "Revoke access"
+                                            )}
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* Permission Item Body (when expanded) */}
+                                      {isExpanded && (
+                                        <div className="p-4 bg-white grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                                          <div>
+                                            <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
+                                              Downloads remaining
+                                            </label>
+                                            <input
+                                              type="text"
+                                              defaultValue={item.downloads_remaining ?? ""}
+                                              className="w-full sm:w-28 bg-white border border-gray-300 rounded px-2.5 py-1.5 text-xs text-gray-800 font-sans outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-[#E31E24]"
+                                            />
+                                          </div>
+
+                                          <div className="relative z-30 calendar-popover-container">
+                                            <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
+                                              Access expires
+                                            </label>
+                                            <input
+                                              type="text"
+                                              readOnly
+                                              value={accessExpiresMap[item.permission_id] || ""}
+                                              placeholder="Never"
+                                              onClick={() => setActiveCalendarId(activeCalendarId === item.permission_id ? null : item.permission_id)}
+                                              className="w-full sm:w-36 bg-white border border-gray-300 rounded px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-500 font-sans outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-[#E31E24] cursor-pointer"
+                                            />
+                                            {activeCalendarId === item.permission_id && (
+                                              <CalendarPopover
+                                                value={accessExpiresMap[item.permission_id] || ""}
+                                                onChange={(newDate) => {
+                                                  setAccessExpiresMap((prev) => ({
+                                                    ...prev,
+                                                    [item.permission_id]: newDate,
+                                                  }));
+                                                }}
+                                                onClose={() => setActiveCalendarId(null)}
+                                              />
+                                            )}
+                                          </div>
+
+                                          <div>
+                                            <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
+                                              Customer download link
+                                            </label>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleCopyLink(item)}
+                                              className="text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-1.5 rounded transition-colors font-sans"
+                                            >
+                                              {copiedDownloadId === item.permission_id ? "Copied!" : "Copy link"}
+                                            </button>
+                                          </div>
+
+                                          <div>
+                                            <label className="block text-xs text-gray-600 font-sans mb-1 font-normal">
+                                              Customer download log
+                                            </label>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleOpenReport(item)}
+                                              className="inline-block text-xs font-semibold text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 px-3.5 py-1.5 rounded transition-colors font-sans cursor-pointer"
+                                            >
+                                              View report
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Search and Grant access row */}
+                            <div className="pt-2 border-t border-gray-100 flex items-start gap-2">
+                              <div ref={searchContainerRef} className="relative z-30 flex-1 max-w-lg">
+                                {/* Multi-select box (tags + input) */}
+                                <div
+                                  onClick={() => searchInputRef.current?.focus()}
+                                  className="min-h-[36px] p-1.5 flex flex-wrap items-center gap-1.5 border border-gray-300 rounded bg-white cursor-text focus-within:border-[#E31E24] focus-within:ring-1 focus-within:ring-[#E31E24]"
+                                >
+                                  {selectedDownloadProducts.map((p) => (
+                                    <span
+                                      key={p.product_id}
+                                      className="inline-flex items-center gap-1.5 bg-[#f0f0f1] border border-gray-300 text-gray-800 text-xs px-2.5 py-1 rounded font-sans max-w-full"
+                                      title={p.display_label}
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleRemoveSelectedProduct(p.product_id);
+                                        }}
+                                        className="text-gray-500 hover:text-red-600 font-bold text-sm leading-none"
+                                      >
+                                        ×
+                                      </button>
+                                      <span className="truncate max-w-[340px] font-medium">{p.display_label}</span>
+                                    </span>
+                                  ))}
+                                  <input
+                                    ref={searchInputRef}
+                                    type="text"
+                                    value={downloadSearchQuery}
+                                    onChange={(e) => setDownloadSearchQuery(e.target.value)}
+                                    onFocus={() => setIsDownloadSearchFocused(true)}
+                                    placeholder={selectedDownloadProducts.length === 0 ? "Search for a downloadable product..." : ""}
+                                    className="flex-1 min-w-[140px] bg-transparent text-xs text-gray-800 placeholder-gray-400 font-sans outline-none px-1 py-0.5"
+                                  />
+                                </div>
+
+                                {/* Dropdown Popover (opens upward above input) */}
+                                {isDownloadSearchFocused && (
+                                  downloadSearchQuery.trim().length < 3 ? (
+                                    <div className="absolute left-0 bottom-full mb-2 w-full bg-white border border-gray-300 rounded-md shadow-xl z-50 p-3 text-xs text-gray-600 font-sans">
+                                      Please enter 3 or more characters
+                                    </div>
+                                  ) : (
+                                    <div className="absolute left-0 bottom-full mb-2 w-full sm:min-w-[620px] max-w-3xl max-h-72 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-2xl z-50 font-sans divide-y divide-gray-150">
+                                      {isSearchingDownloads ? (
+                                        <div className="p-3.5 text-xs text-gray-500 font-sans flex items-center gap-2">
+                                          <svg className="animate-spin h-3.5 w-3.5 text-[#E31E24]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                          </svg>
+                                          <span>Searching downloadable products…</span>
+                                        </div>
+                                      ) : downloadSearchResults.length === 0 ? (
+                                        <div className="p-3.5 text-xs text-gray-500 font-sans">No downloadable products found.</div>
+                                      ) : (
+                                        downloadSearchResults.map((product, idx) => {
+                                          const displayLabel = formatDownloadProductLabel(product);
+                                          const isHovered = hoveredSearchResultIndex === idx;
+
+                                          return (
+                                            <div
+                                              key={`${product.product_id}-${idx}`}
+                                              onMouseEnter={() => setHoveredSearchResultIndex(idx)}
+                                              onClick={() => handleSelectProduct(product)}
+                                              className={`px-3.5 py-2.5 text-xs cursor-pointer select-none font-sans transition-colors leading-snug ${isHovered
+                                                ? "bg-[#e31e24] text-white"
+                                                : "text-gray-800 hover:bg-gray-50"
+                                                }`}
+                                            >
+                                              <div className="font-medium text-xs break-words">
+                                                {displayLabel}
+                                              </div>
+                                              {product.product_categories && (
+                                                <div className={`text-[11px] mt-0.5 truncate ${isHovered ? "text-red-100" : "text-gray-400"}`}>
+                                                  Categories: {product.product_categories}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })
+                                      )}
+                                    </div>
+                                  )
+                                )}
+                              </div>
+
+                              <button
+                                type="button"
+                                disabled={isGrantingAccess || selectedDownloadProducts.length === 0}
+                                onClick={handleGrantAccess}
+                                className={`text-xs font-semibold px-3.5 py-2 rounded transition-colors font-sans shrink-0 h-[36px] flex items-center gap-1.5 ${selectedDownloadProducts.length === 0 || isGrantingAccess
+                                  ? "text-gray-400 border border-gray-250 bg-gray-50 cursor-not-allowed"
+                                  : "text-[#E31E24] border border-[#E31E24] bg-white hover:bg-red-50 cursor-pointer"
+                                  }`}
+                              >
+                                {isGrantingAccess && (
+                                  <svg className="animate-spin -ml-0.5 mr-1 h-3.5 w-3.5 text-[#E31E24]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                  </svg>
+                                )}
+                                {isGrantingAccess ? "Granting..." : "Grant access"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Right column */}
                   <div className="space-y-4">
@@ -1933,27 +1936,54 @@ export default function OrderDetailPage() {
                       </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-2">
-                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Customer history</h4>
-                      <div className="flex justify-between text-xs font-sans">
-                        <span className="text-gray-500 flex items-center gap-1">
-                          Total orders
-                          <span
-                            className="inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] rounded-full bg-gray-200 text-gray-600 font-bold cursor-help"
-                            title="Total number of orders for this customer, excluding pending payment, failed, and cancelled orders, including the current one."
-                          >
-                            i
-                          </span>
-                        </span>
-                        <span className="font-semibold text-gray-900">{order.customer_stats.total_orders}</span>
+                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-3 font-sans">
+                      <h4 className="text-xs font-bold text-gray-700 font-sans">Customer history</h4>
+                      
+                      <div className="space-y-0.5">
+                        <div className="text-xs text-gray-600 flex items-center gap-1.5 font-medium">
+                          <span>Total orders</span>
+                          <div className="relative group inline-flex items-center">
+                            <span
+                              className="inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] rounded-full bg-gray-200 text-gray-600 font-bold cursor-help"
+                              title="Total number of orders for this customer, excluding cancelled orders, including the current one."
+                            >
+                              ?
+                            </span>
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block w-52 p-2 bg-[#2c3338] text-white text-[11px] rounded shadow-xl z-50 text-center leading-snug pointer-events-none font-normal">
+                              Total number of orders for this customer, excluding cancelled orders, including the current one.
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-[#2c3338]" />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-xs font-semibold text-gray-900">{order.customer_stats.total_orders}</div>
                       </div>
-                      <div className="flex justify-between text-xs font-sans">
-                        <span className="text-gray-500">Total revenue</span>
-                        <span className="font-semibold text-gray-900">{order.currency_symbol}{parseFloat(order.customer_stats.total_revenue).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+
+                      <div className="space-y-0.5">
+                        <div className="text-xs text-gray-600 flex items-center gap-1.5 font-medium">
+                          <span>Total revenue</span>
+                          <div className="relative group inline-flex items-center">
+                            <span
+                              className="inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] rounded-full bg-gray-200 text-gray-600 font-bold cursor-help"
+                              title="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."
+                            >
+                              ?
+                            </span>
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block w-56 p-2 bg-[#2c3338] text-white text-[11px] rounded shadow-xl z-50 text-center leading-snug pointer-events-none font-normal">
+                              This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders.
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-[#2c3338]" />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-xs font-semibold text-gray-900">
+                          {order.currency_symbol}{parseFloat(order.customer_stats.total_revenue || "0").toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
                       </div>
-                      <div className="flex justify-between text-xs font-sans">
-                        <span className="text-gray-500">Average order value</span>
-                        <span className="font-semibold text-gray-900">{order.currency_symbol}{parseFloat(order.customer_stats.average_order_value).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+
+                      <div className="space-y-0.5">
+                        <div className="text-xs text-gray-600 font-medium">Average order value</div>
+                        <div className="text-xs font-semibold text-gray-900">
+                          {order.currency_symbol}{parseFloat(order.customer_stats.average_order_value || "0").toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
                       </div>
                     </div>
 
