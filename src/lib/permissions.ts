@@ -152,3 +152,33 @@ export function canViewDownloadableProduct(profile: CustomerProfile | null | und
   return hasOrdersFlag(profile, DOWNLOADABLE_PRODUCT_KEY);
 }
 
+// Custom Filter Keys from ACF:
+// wc-custom-filter-1 -> Handwritten Scan Copy
+// wc-custom-filter-2 -> Handwritten Hard Copy Via Courier
+// wc-custom-filter-3 -> Speed Post
+// wc-custom-filter-4 -> Assignment Not Available
+export const HANDWRITTEN_SCAN_COPY_FILTER_KEY = "wc-custom-filter-1";
+export const HANDWRITTEN_HARD_COPY_FILTER_KEY = "wc-custom-filter-2";
+export const SPEED_POST_CUSTOM_FILTER_KEY = "wc-custom-filter-3";
+export const ASSIGNMENT_NOT_AVAILABLE_FILTER_KEY = "wc-custom-filter-4";
+
+// Gates the "Handwritten Scan Copy" filter tab and dropdown option.
+export function canViewHandwrittenScanCopy(profile: CustomerProfile | null | undefined): boolean {
+  return isAdministrator(profile) || hasOrdersFlag(profile, HANDWRITTEN_SCAN_COPY_FILTER_KEY);
+}
+
+// Gates the "Handwritten Hard Copy Via Courier" filter tab and dropdown option.
+export function canViewHandwrittenHardCopy(profile: CustomerProfile | null | undefined): boolean {
+  return isAdministrator(profile) || hasOrdersFlag(profile, HANDWRITTEN_HARD_COPY_FILTER_KEY);
+}
+
+// Gates the "Speed Post" filter tab.
+export function canViewSpeedPostFilter(profile: CustomerProfile | null | undefined): boolean {
+  return isAdministrator(profile) || hasOrdersFlag(profile, SPEED_POST_CUSTOM_FILTER_KEY);
+}
+
+// Gates the "Assignment Not Available" filter tab and dropdown option.
+export function canViewAssignmentNotAvailable(profile: CustomerProfile | null | undefined): boolean {
+  return isAdministrator(profile) || hasOrdersFlag(profile, ASSIGNMENT_NOT_AVAILABLE_FILTER_KEY);
+}
+

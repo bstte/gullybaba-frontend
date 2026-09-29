@@ -9,6 +9,10 @@ import { useAuthGuard } from "@/src/hooks/useAuthGuard";
 import {
   canViewOrder,
   canViewOrderStatus,
+  canViewHandwrittenScanCopy,
+  canViewHandwrittenHardCopy,
+  canViewSpeedPostFilter,
+  canViewAssignmentNotAvailable,
   hasOrdersAccess,
   getDefaultAllowedRoute,
   isAdministrator,
@@ -308,10 +312,18 @@ export default function OrdersPage() {
   const trashTab = permittedTabs.find((t) => t.value === "trash") || (statusCounts["trash"] > 0 ? { label: "Trash", value: "trash", count: statusCounts["trash"] } : null);
 
   const specialFilterTabs: { label: string; value: string; count?: number }[] = [
-    { label: "Handwritten Scan Copy", value: "handwritten-scan-copy" },
-    { label: "Handwritten Hard Copy Via Courier", value: "handwritten-hard-copy-via-courier" },
-    { label: "Assignment Not Available", value: "assignment-not-available" },
-    { label: "Speed Post", value: "speed-post" },
+    ...(canViewHandwrittenScanCopy(profile)
+      ? [{ label: "Handwritten Scan Copy", value: "handwritten-scan-copy" }]
+      : []),
+    ...(canViewHandwrittenHardCopy(profile)
+      ? [{ label: "Handwritten Hard Copy Via Courier", value: "handwritten-hard-copy-via-courier" }]
+      : []),
+    ...(canViewAssignmentNotAvailable(profile)
+      ? [{ label: "Assignment Not Available", value: "assignment-not-available" }]
+      : []),
+    ...(canViewSpeedPostFilter(profile)
+      ? [{ label: "Speed Post", value: "speed-post" }]
+      : []),
   ];
 
   const statusTabs: { label: string; value: string; count?: number }[] = [
@@ -437,24 +449,24 @@ export default function OrdersPage() {
             </div>
 
             {/* Row 2: Advanced filters (Date range, Code, Category, Payment Type, Demand Type) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
 
               {/* Date range filter */}
-              <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5">
+              <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5 min-w-0">
                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider font-sans">Date Range Filter</span>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 min-w-0">
                   <input
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full bg-white border border-gray-250 px-2 py-1 text-xs rounded outline-none font-sans font-medium"
+                    className="flex-1 min-w-0 w-full sm:w-auto bg-white border border-gray-250 px-2 py-1 text-xs rounded outline-none font-sans font-medium"
                   />
-                  <span className="text-gray-400 text-xs">—</span>
+                  <span className="text-gray-400 text-xs shrink-0 hidden sm:inline">—</span>
                   <input
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full bg-white border border-gray-250 px-2 py-1 text-xs rounded outline-none font-sans font-medium"
+                    className="flex-1 min-w-0 w-full sm:w-auto bg-white border border-gray-250 px-2 py-1 text-xs rounded outline-none font-sans font-medium"
                   />
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
@@ -474,7 +486,7 @@ export default function OrdersPage() {
               </div>
 
               {/* Category Filter */}
-              <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5">
+              <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5 min-w-0">
                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider font-sans">Category Filter</span>
                 {selectedCategories.length > 0 && (
                   <div className="flex flex-wrap gap-1">
@@ -542,7 +554,7 @@ export default function OrdersPage() {
               </div>
 
               {/* Payment Type Filter */}
-              <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5">
+              <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5 min-w-0">
                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider font-sans">Payment Type Filter</span>
                 <select
                   value={paymentMethodInput}
@@ -562,27 +574,37 @@ export default function OrdersPage() {
               </div>
 
               {/* Demand Type Filter */}
-              <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider font-sans">Demand Type Filter</span>
-                <select
-                  name="demand_type_filter"
-                  id="demand_type_filter"
-                  value={demandTypeInput}
-                  onChange={(e) => setDemandTypeInput(e.target.value)}
-                  className="w-full bg-white border border-gray-250 px-2.5 py-1 text-xs rounded outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans"
-                >
-                  <option value="">Select Demand Type</option>
-                  <option value="Handwritten Scan Copy">Handwritten Scan Copy</option>
-                  <option value="Handwritten Hard Copy Via Courier">Handwritten Hard Copy Via Courier</option>
-                  <option value="1">Not Available</option>
-                </select>
-                <button
-                  onClick={triggerApplyFilters}
-                  className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] hover:bg-red-50 px-3 py-1 rounded transition-colors font-sans whitespace-nowrap self-start"
-                >
-                  Filter
-                </button>
-              </div>
+              {(canViewHandwrittenScanCopy(profile) ||
+                canViewHandwrittenHardCopy(profile) ||
+                canViewAssignmentNotAvailable(profile)) && (
+                <div className="border border-gray-200 rounded p-3 bg-gray-50/50 flex flex-col gap-2.5 min-w-0">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider font-sans">Demand Type Filter</span>
+                  <select
+                    name="demand_type_filter"
+                    id="demand_type_filter"
+                    value={demandTypeInput}
+                    onChange={(e) => setDemandTypeInput(e.target.value)}
+                    className="w-full bg-white border border-gray-250 px-2.5 py-1 text-xs rounded outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans"
+                  >
+                    <option value="">Select Demand Type</option>
+                    {canViewHandwrittenScanCopy(profile) && (
+                      <option value="Handwritten Scan Copy">Handwritten Scan Copy</option>
+                    )}
+                    {canViewHandwrittenHardCopy(profile) && (
+                      <option value="Handwritten Hard Copy Via Courier">Handwritten Hard Copy Via Courier</option>
+                    )}
+                    {canViewAssignmentNotAvailable(profile) && (
+                      <option value="1">Not Available</option>
+                    )}
+                  </select>
+                  <button
+                    onClick={triggerApplyFilters}
+                    className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] hover:bg-red-50 px-3 py-1 rounded transition-colors font-sans whitespace-nowrap self-start"
+                  >
+                    Filter
+                  </button>
+                </div>
+              )}
 
             </div>
           </div>
