@@ -17,6 +17,7 @@ export const DELETE_NOTE_KEY = "delete_note";
 export const VIEW_ORDER_KEY = "view_order";
 export const PROFILE_LINK_KEY = "profile_link";
 export const DOWNLOADABLE_PRODUCT_KEY = "downloadable_product";
+export const REFUND_BUTTON_KEY = "refund-button";
 
 // Abandoned Cart section keys
 export const ABANDONED_CART_KEY = "abandoned_cart";
@@ -181,4 +182,11 @@ export function canViewSpeedPostFilter(profile: CustomerProfile | null | undefin
 export function canViewAssignmentNotAvailable(profile: CustomerProfile | null | undefined): boolean {
   return isAdministrator(profile) || hasOrdersFlag(profile, ASSIGNMENT_NOT_AVAILABLE_FILTER_KEY);
 }
+
+// Gates the "Issue Refund" button on the order detail page.
+export function canRefundOrder(profile: CustomerProfile | null | undefined): boolean {
+  return hasOrdersFlag(profile, REFUND_BUTTON_KEY) || hasOrdersFlag(profile, "refund_button");
+}
+
+export const canViewRefundButton = canRefundOrder;
 

@@ -6,7 +6,7 @@ import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
 import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, refundOrder, revokeOrderDownloadAccess, searchDownloadableProducts, sendToDtdc, updateOrder, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
-import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canSendToDtdc, canSendToShiprocket, canSendToTekipost, canViewDownloadableProduct, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
+import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canRefundOrder, canSendToDtdc, canSendToShiprocket, canSendToTekipost, canViewDownloadableProduct, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
 
 interface DownloadItem {
   permission_id: number;
@@ -382,6 +382,7 @@ export default function OrderDetailPage() {
   const canView = canViewOrder(profile);
   const canProfileLink = canViewProfileLink(profile);
   const canDownloadableProduct = canViewDownloadableProduct(profile);
+  const canRefund = canRefundOrder(profile);
   const router = useRouter();
   const params = useParams();
   const orderId = params?.id as string;
@@ -949,7 +950,7 @@ export default function OrderDetailPage() {
   };
 
   const handleManualRefund = async () => {
-    if (!token || !order) return;
+    if (!token || !order || !canRefund) return;
     const amt = refundAmount.trim() !== "" ? parseFloat(refundAmount) : totalAvailableToRefund;
 
     if (isNaN(amt) || amt <= 0) {
@@ -1993,7 +1994,7 @@ export default function OrderDetailPage() {
                                   </td>
                                   <td className="py-3.5 px-4 font-sans text-slate-700 text-right align-top text-xs">
                                     <div className="font-semibold text-slate-800">× {li.quantity}</div>
-                                    {isRefundMode && isPrepaidOrder && (
+                                    {isRefundMode && isPrepaidOrder && canRefund && (
                                       <div className="mt-1.5 flex justify-end">
                                         <input
                                           type="number"
@@ -2008,7 +2009,7 @@ export default function OrderDetailPage() {
                                   </td>
                                   <td className="py-3.5 px-5 font-sans text-slate-900 font-bold text-right align-top text-xs">
                                     <div>{order.currency_symbol}{parseFloat(li.total).toFixed(2)}</div>
-                                    {isRefundMode && isPrepaidOrder && (
+                                    {isRefundMode && isPrepaidOrder && canRefund && (
                                       <div className="mt-1.5 flex justify-end">
                                         <input
                                           type="number"
@@ -2074,10 +2075,10 @@ export default function OrderDetailPage() {
 
                       {/* Refund Area */}
                       {!isRefundMode ? (
-                        /* Normal view: Bottom bar with Refund button on the left (only when prepaid) and notice on the right */
+                        /* Normal view: Bottom bar with Refund button on the left (only when prepaid & user has refund permission) and notice on the right */
                         <div className="border-t border-slate-100 px-5 py-3.5 flex items-center justify-between bg-slate-50/40">
                           <div>
-                            {isPrepaidOrder && (
+                            {isPrepaidOrder && canRefund && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -2099,8 +2100,8 @@ export default function OrderDetailPage() {
                             <span>This order is completed and no longer directly editable.</span>
                           </div>
                         </div>
-                      ) : isPrepaidOrder ? (
-                        /* Expanded Refund Panel (Only accessible for prepaid orders) */
+                      ) : isPrepaidOrder && canRefund ? (
+                        /* Expanded Refund Panel (Only accessible for prepaid orders with refund permission) */
                         <div className="border-t border-slate-200 bg-slate-50/70">
                           <div className="p-5 flex flex-col items-end gap-3">
                             <div className="w-full flex items-center justify-between pb-3 border-b border-slate-200/60 flex-wrap gap-2">
