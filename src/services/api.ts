@@ -417,6 +417,28 @@ export async function updateOrderAddress(
   return handleResponse(response, "Failed to update order address");
 }
 
+export async function refundOrder(
+  token: string,
+  orderId: number,
+  data: {
+    amount?: number;
+    reason?: string;
+    restock?: boolean;
+    items?: Array<{ id: number; qty: number; total: number }>;
+  }
+) {
+  const response = await fetch(`${API_URL}/api/orders/${orderId}/refund`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  return handleResponse(response, "Failed to process refund");
+}
+
 export async function fetchProducts(
   token: string,
   page = 1,

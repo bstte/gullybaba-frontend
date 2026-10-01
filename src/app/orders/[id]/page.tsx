@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
-import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, revokeOrderDownloadAccess, searchDownloadableProducts, sendToDtdc, updateOrder, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
+import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, refundOrder, revokeOrderDownloadAccess, searchDownloadableProducts, sendToDtdc, updateOrder, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
 import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canSendToDtdc, canSendToShiprocket, canSendToTekipost, canViewDownloadableProduct, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
 
@@ -363,6 +363,7 @@ interface OrderDetail {
     average_order_value: string;
   };
   meta_data: { id: number; key: string; value: string }[];
+  refunds?: Array<{ id: number; total: number; date_created?: string }>;
   updated_by?: string;
   display_name?: string;
 }
@@ -417,6 +418,8 @@ export default function OrderDetailPage() {
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [isLoadingDownloads, setIsLoadingDownloads] = useState(false);
   const [isDownloadsBoxOpen, setIsDownloadsBoxOpen] = useState(true);
+  const [isFulfillmentBoxOpen, setIsFulfillmentBoxOpen] = useState(true);
+  const [activeFulfillmentTab, setActiveFulfillmentTab] = useState<"shiprocket" | "tekipost" | "dtdc" | "speedpost">("shiprocket");
   const [expandedDownloadIds, setExpandedDownloadIds] = useState<Record<number, boolean>>({});
   const [copiedDownloadId, setCopiedDownloadId] = useState<number | null>(null);
   const [accessExpiresMap, setAccessExpiresMap] = useState<Record<number, string>>({});
@@ -439,6 +442,15 @@ export default function OrderDetailPage() {
   const [logsError, setLogsError] = useState<string | null>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Refund State
+  const [isRefundMode, setIsRefundMode] = useState(false);
+  const [refundQty, setRefundQty] = useState<Record<number, number>>({});
+  const [refundItemTotal, setRefundItemTotal] = useState<Record<number, number>>({});
+  const [restockRefundedItems, setRestockRefundedItems] = useState(true);
+  const [refundAmount, setRefundAmount] = useState<string>("");
+  const [refundReason, setRefundReason] = useState<string>("");
+  const [isProcessingRefund, setIsProcessingRefund] = useState(false);
 
   const showNotification = (message: string, type: "success" | "error") => {
     setNotification({ message, type });
@@ -910,6 +922,81 @@ export default function OrderDetailPage() {
     }
   };
 
+  const handleItemRefundQtyChange = (itemId: number, qtyStr: string, itemTotal: number, itemQty: number) => {
+    const qty = parseInt(qtyStr, 10);
+    const clampedQty = isNaN(qty) ? 0 : Math.max(0, Math.min(qty, itemQty));
+    const unitPrice = itemQty > 0 ? itemTotal / itemQty : 0;
+    const calculatedTotal = Number((clampedQty * unitPrice).toFixed(2));
+
+    const updatedQty = { ...refundQty, [itemId]: clampedQty };
+    const updatedTotals = { ...refundItemTotal, [itemId]: calculatedTotal };
+
+    setRefundQty(updatedQty);
+    setRefundItemTotal(updatedTotals);
+
+    const sum = Object.values(updatedTotals).reduce((a, b) => a + (Number(b) || 0), 0);
+    setRefundAmount(sum > 0 ? sum.toFixed(2) : "");
+  };
+
+  const handleItemRefundTotalChange = (itemId: number, totalStr: string, maxTotal: number) => {
+    const total = parseFloat(totalStr);
+    const clampedTotal = isNaN(total) ? 0 : Math.max(0, Math.min(total, maxTotal));
+    const updatedTotals = { ...refundItemTotal, [itemId]: clampedTotal };
+    setRefundItemTotal(updatedTotals);
+
+    const sum = Object.values(updatedTotals).reduce((a, b) => a + (Number(b) || 0), 0);
+    setRefundAmount(sum > 0 ? sum.toFixed(2) : "");
+  };
+
+  const handleManualRefund = async () => {
+    if (!token || !order) return;
+    const amt = refundAmount.trim() !== "" ? parseFloat(refundAmount) : totalAvailableToRefund;
+
+    if (isNaN(amt) || amt <= 0) {
+      showNotification("Please enter a valid refund amount.", "error");
+      return;
+    }
+
+    if (amt > totalAvailableToRefund) {
+      showNotification(`Refund amount cannot exceed available refund (${order.currency_symbol}${totalAvailableToRefund.toFixed(2)})`, "error");
+      return;
+    }
+
+    const itemsPayload = Object.entries(refundQty)
+      .filter(([_, q]) => q > 0)
+      .map(([itemId, qty]) => ({
+        id: Number(itemId),
+        qty,
+        total: refundItemTotal[Number(itemId)] || 0,
+      }));
+
+    try {
+      setIsProcessingRefund(true);
+      const res = await refundOrder(token, order.id, {
+        amount: amt,
+        reason: refundReason.trim(),
+        restock: restockRefundedItems,
+        items: itemsPayload,
+      });
+
+      if (res.success) {
+        showNotification(res.message || "Refund processed successfully!", "success");
+        setIsRefundMode(false);
+        setRefundQty({});
+        setRefundItemTotal({});
+        setRefundAmount("");
+        setRefundReason("");
+        await loadOrder(token);
+      } else {
+        showNotification(res.message || "Failed to process refund", "error");
+      }
+    } catch (err: any) {
+      showNotification(err.message || "Failed to process refund", "error");
+    } finally {
+      setIsProcessingRefund(false);
+    }
+  };
+
   const renderAddress = (addr: Address, withEmail: boolean) => {
     const name = [addr.first_name, addr.last_name].filter(Boolean).join(" ");
     return (
@@ -944,8 +1031,19 @@ export default function OrderDetailPage() {
     </svg>
   );
 
-  const inputClass = "w-full bg-white border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]";
-  const fieldLabel = "text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1";
+  const getStatusBadge = (status: string) => {
+    const s = (status || "").toLowerCase().replace(/^wc-/, "");
+    if (s === "completed") return { cls: "bg-emerald-50 border-emerald-200/80 text-emerald-700", dot: "bg-emerald-500" };
+    if (s === "processing") return { cls: "bg-blue-50 border-blue-200/80 text-blue-700", dot: "bg-blue-500" };
+    if (s === "pending" || s === "pending payment") return { cls: "bg-amber-50 border-amber-200/80 text-amber-700", dot: "bg-amber-500" };
+    if (s === "on-hold" || s === "on hold") return { cls: "bg-slate-100 border-slate-200 text-slate-700", dot: "bg-slate-400" };
+    if (s === "failed" || s === "cancelled") return { cls: "bg-rose-50 border-rose-200/80 text-rose-700", dot: "bg-rose-500" };
+    if (s === "refunded") return { cls: "bg-purple-50 border-purple-200/80 text-purple-700", dot: "bg-purple-500" };
+    return { cls: "bg-slate-50 border-slate-200 text-slate-700", dot: "bg-slate-400" };
+  };
+
+  const inputClass = "w-full bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200/90 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-sans outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] transition-all";
+  const fieldLabel = "text-[10px] font-bold text-slate-400 uppercase tracking-wider font-sans mb-1 block";
 
   const renderAddressForm = (form: Address, setForm: (a: Address) => void, withPayment: boolean) => (
     <div className="space-y-2.5">
@@ -1013,6 +1111,9 @@ export default function OrderDetailPage() {
   );
 
   const itemsSubtotal = order?.line_items.reduce((sum, li) => sum + parseFloat(li.total || "0"), 0) ?? 0;
+  const totalItemCount = order?.line_items.reduce((sum, li) => sum + (li.quantity || 1), 0) ?? 0;
+  const amountAlreadyRefunded = order?.refunds?.reduce((sum, r) => sum + (Number(r.total) || 0), 0) ?? 0;
+  const totalAvailableToRefund = Math.max(0, parseFloat(order?.total || "0") - amountAlreadyRefunded);
   const feesTotal = order?.fee_lines.reduce((sum, f) => sum + parseFloat(f.total || "0"), 0) ?? 0;
   const shippingTotal = order?.shipping_lines && order.shipping_lines.length > 0
     ? order.shipping_lines.reduce((sum, s) => sum + parseFloat(s.total || "0"), 0)
@@ -1031,115 +1132,144 @@ export default function OrderDetailPage() {
   const paymentTypeDisplay = order?.payment_type || itemsPaymentType || getOrderMeta("Payment Type") || getOrderMeta("_awcdp_deposits_payment_type");
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-gray-50 text-gray-900 font-sans overflow-hidden">
+    <div className="h-screen w-screen flex flex-col bg-slate-50/70 text-slate-900 font-sans overflow-hidden">
       <Header />
       <div className="flex-1 flex overflow-hidden">
         <Sidebar />
-        <main className="flex-1 flex flex-col bg-gray-50 overflow-hidden relative">
+        <main className="flex-1 flex flex-col bg-slate-50/70 overflow-hidden relative">
           {notification && (
-            <div className={`absolute top-4 right-4 z-50 px-4 py-3 rounded shadow-md border text-xs font-medium flex items-center gap-2 animate-bounce ${notification.type === "success"
-              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-              : "bg-red-50 border-red-200 text-red-800"
+            <div className={`absolute top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg border text-xs font-medium flex items-center gap-2.5 animate-bounce backdrop-blur-md ${notification.type === "success"
+              ? "bg-emerald-50/95 border-emerald-200 text-emerald-800"
+              : "bg-rose-50/95 border-rose-200 text-rose-800"
               }`}>
-              <span className="w-1.5 h-1.5 bg-current rounded-full"></span>
+              <span className={`w-2 h-2 rounded-full ${notification.type === "success" ? "bg-emerald-500" : "bg-rose-500"}`}></span>
               <span>{notification.message}</span>
             </div>
           )}
 
           {/* Page Header */}
-          <div className="bg-white border-b border-gray-200 py-3.5 px-6 flex items-center justify-between shrink-0">
+          <div className="bg-white border-b border-slate-200/80 py-4 px-6 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => router.push("/orders")}
-                className="text-xs font-semibold text-gray-500 hover:text-[#E31E24] font-sans"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/70 px-3 py-1.5 rounded-lg transition-colors font-sans cursor-pointer"
               >
-                ← Orders
+                <span>←</span>
+                <span>Orders</span>
               </button>
-              <h2 className="text-base font-bold text-gray-900 font-sans">Edit order</h2>
-
+              <div className="h-4 w-px bg-slate-200" />
+              <h2 className="text-base font-bold text-slate-900 font-sans tracking-tight">Order #{order ? order.id : ""}</h2>
+              {order && (
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border font-sans uppercase tracking-wide ${getStatusBadge(order.status).cls}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${getStatusBadge(order.status).dot}`}></span>
+                  <span>{order.status}</span>
+                </span>
+              )}
             </div>
           </div>
 
           <div className="flex-1 overflow-auto p-6">
             {isLoading && (
-              <div className="flex items-center justify-center py-20 text-xs font-semibold text-gray-500 font-sans">
-                Loading order...
+              <div className="flex items-center justify-center py-20 text-xs font-semibold text-slate-500 font-sans">
+                <div className="flex items-center gap-2.5 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm">
+                  <svg className="animate-spin h-4 w-4 text-[#E31E24]" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>Loading order...</span>
+                </div>
               </div>
             )}
 
             {!isLoading && loadError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-sans rounded p-4">
+              <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-sans rounded-xl p-4">
                 {loadError}
               </div>
             )}
 
             {!isLoading && !loadError && order && (
               <div className="mx-auto space-y-4">
-                <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <h3 className="text-sm font-bold text-gray-900 font-sans">Order #{order.id} details</h3>
-                    {Boolean(
-                      order.is_same_day_delivery ||
-                      /same\s*day/i.test(order.shipping_method || "") ||
-                      order.shipping_lines?.some((s) => /same\s*day/i.test(s.method_title || s.method_id || ""))
-                    ) && (
-                        <span
-                          style={{ animation: "sameDayBlink 1s infinite" }}
-                          className="animate-same-day-blink inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold font-sans bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-sm"
-                        >
-                          <span className="text-amber-500 text-[11px] leading-none">⚡</span>
-                          <span>Same Day Delivery</span>
-                        </span>
-                      )}
+                {/* Modern Order Header Banner */}
+                <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h3 className="text-base font-bold text-slate-900 font-sans tracking-tight">Order #{order.id} Details</h3>
+                      {Boolean(
+                        order.is_same_day_delivery ||
+                        /same\s*day/i.test(order.shipping_method || "") ||
+                        order.shipping_lines?.some((s) => /same\s*day/i.test(s.method_title || s.method_id || ""))
+                      ) && (
+                          <span
+                            style={{ animation: "sameDayBlink 1s infinite" }}
+                            className="animate-same-day-blink inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold font-sans bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-2xs"
+                          >
+                            <span className="text-amber-500 text-[11px] leading-none">⚡</span>
+                            <span>Same Day Delivery</span>
+                          </span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 font-sans flex-wrap">
+                      <span>Payment via <strong className="text-slate-800 font-medium">{order.payment_method_title || order.payment_method || "—"}</strong></span>
+                      {order.customer_ip_address && <span className="text-slate-400">• Customer IP: {order.customer_ip_address}</span>}
+                      <span className="text-slate-400">• Created: {new Date(order.date_created).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 font-sans mt-1 flex items-center gap-2 flex-wrap">
-                    <span>Payment via <strong className="text-gray-700 font-medium">{order.payment_method_title || order.payment_method || "—"}</strong>.</span>
-
-                    {order.customer_ip_address && <span className="text-gray-400">• Customer IP: {order.customer_ip_address}</span>}
-                  </p>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="text-left md:text-right bg-slate-50 md:bg-transparent p-2.5 md:p-0 rounded-lg border border-slate-100 md:border-0">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-sans">Order Total</div>
+                      <div className="text-lg font-bold font-mono text-slate-900">
+                        {order.currency_symbol}{parseFloat(order.total || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
                   {/* Left column */}
                   <div className="lg:col-span-2 space-y-4">
-                    {/* Order details: General / Billing / Shipping */}
-                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                      <div className="grid grid-cols-1 md:grid-cols-[1.7fr_1fr_1fr] divide-y md:divide-y-0 md:divide-x divide-gray-100">
+                    {/* Order Details: General / Billing / Shipping */}
+                    <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
+                      <div className="grid grid-cols-1 md:grid-cols-[1.6fr_1fr_1fr] divide-y md:divide-y-0 md:divide-x divide-slate-100">
                         {/* General */}
-                        <div className="p-4 space-y-3">
-                          <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">General</h4>
+                        <div className="p-5 space-y-3.5">
+                          <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider font-sans border-b border-slate-100 pb-2.5">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span>General Information</span>
+                          </div>
 
                           <div>
-                            <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Date created:</div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase font-sans mb-1">Date Created:</div>
                             <div className="flex items-center gap-2">
-                              <div className="flex-1 bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans">
+                              <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 font-sans font-medium">
                                 {new Date(order.date_created).toLocaleDateString("en-CA")}
                               </div>
-                              <span className="text-[10px] text-gray-400 font-sans">@</span>
-                              <div className="w-14 bg-gray-50 border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans text-center">
+                              <span className="text-[11px] text-slate-400 font-sans">@</span>
+                              <div className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-sans text-center font-medium">
                                 {new Date(order.date_created).toLocaleTimeString(undefined, { hour: "2-digit", hour12: false })}
                               </div>
-                              <span className="text-[10px] text-gray-400 font-sans">:</span>
-                              <div className="w-14 bg-gray-50 border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans text-center">
+                              <span className="text-[11px] text-slate-400 font-sans">:</span>
+                              <div className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-sans text-center font-medium">
                                 {new Date(order.date_created).toLocaleTimeString(undefined, { minute: "2-digit" }).replace(/.*:/, "")}
                               </div>
                             </div>
                           </div>
 
                           <div>
-                            <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Status:</div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase font-sans mb-1">Status:</div>
                             {canEditStatus ? (
                               <select
                                 value={selectedStatus}
                                 onChange={(e) => setSelectedStatus(e.target.value)}
-                                className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
+                                className="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-sans outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] transition-all cursor-pointer font-medium"
                               >
                                 {statusList.map((s) => (
                                   <option key={s.value} value={s.value}>{s.label}</option>
                                 ))}
                               </select>
                             ) : (
-                              <div className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans">
+                              <div className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 font-sans font-medium">
                                 {statusList.find((s) => s.value === order.status)?.label || order.status}
                               </div>
                             )}
@@ -1147,138 +1277,75 @@ export default function OrderDetailPage() {
 
                           <div>
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-[10px] font-semibold text-gray-500 uppercase font-sans">Customer:</span>
-                              <span className="text-[10px] font-sans space-x-2">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase font-sans">Customer:</span>
+                              <div className="text-[11px] font-sans flex items-center gap-2">
                                 {canProfileLink && (
-                                  <a href={`/users/${order.customer_id}`} className="text-[#E31E24] hover:underline">Profile →</a>
+                                  <a href={`/users/${order.customer_id}`} className="text-[#E31E24] hover:underline font-medium">Profile →</a>
                                 )}
-                                <a href={`/orders?customer=${order.customer_id}`} className="text-[#E31E24] hover:underline">View other orders →</a>
-                              </span>
+                                <a href={`/orders?customer=${order.customer_id}`} className="text-slate-500 hover:text-[#E31E24] font-medium">Other orders →</a>
+                              </div>
                             </div>
-                            <div className="w-full bg-gray-50 border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans">
-                              {order.billing.first_name} {order.billing.last_name} (#{order.customer_id}{order.billing.email ? ` – ${order.billing.email}` : ""})
+                            <div className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-sans font-medium flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                {(order.billing.first_name || "U")[0].toUpperCase()}
+                              </div>
+                              <span className="truncate">
+                                {order.billing.first_name} {order.billing.last_name} (#{order.customer_id}{order.billing.email ? ` – ${order.billing.email}` : ""})
+                              </span>
                             </div>
                           </div>
 
-
-
                           {canWeight && (
                             <div>
-                              <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Weight (kg) :</div>
+                              <div className="text-[10px] font-bold text-slate-400 uppercase font-sans mb-1">Weight (kg) :</div>
                               <input
                                 type="text"
                                 value={isLoadingWeight ? "Calculating…" : weight}
                                 disabled={isLoadingWeight}
                                 onChange={(e) => setWeight(e.target.value)}
-                                className="w-full bg-white border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] disabled:bg-gray-50 disabled:text-gray-400"
+                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-sans outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] disabled:bg-slate-50 disabled:text-slate-400 transition-all font-mono"
                               />
                             </div>
                           )}
 
-                          <div className="flex items-center gap-2 pt-1">
-                            {canShiprocket && (
-                              <button
-                                onClick={handleSendToShiprocket}
-                                disabled={isSendingShiprocket || isLoadingWeight || shiprocketStatus === "Sent"}
-                                className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
+                          {/* WhatsApp Customer Action */}
+                          {order.billing.phone && (
+                            <div className="pt-2">
+                              <a
+                                href={`https://wa.me/91${(order.billing.phone || "").replace(/\D/g, "")}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-full text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3.5 py-2 rounded-lg font-sans shadow-2xs inline-flex items-center justify-center gap-2 transition-all active:scale-95"
                               >
-                                {isSendingShiprocket ? "Building…" : "Send to Shiprocket"}
-                              </button>
-                            )}
-                            <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans ${shiprocketStatus === "Sent" ? "text-emerald-700 border-emerald-600" : "text-[#E31E24] border-[#E31E24]"}`}>
-                              Status: {shiprocketStatus}
-                            </span>
-                          </div>
-
-                          <div className="pt-2 border-t border-gray-100 space-y-1.5">
-                            <div className="text-xs font-sans"><span className="text-gray-500">Shiprocket AWB Code:</span></div>
-                            <div className="text-xs font-sans"><span className="text-gray-500">Pickup Date:</span></div>
-                            <div className="text-xs font-sans"><span className="text-gray-500">Current Status:</span></div>
-                            <div className="text-xs font-sans"><span className="text-gray-500">Courier Name:</span></div>
-                            <div className="text-xs font-sans"><span className="text-gray-500">Estimated Delivery Date:</span></div>
-                            <div className="text-xs font-sans">
-                              <span className="text-gray-500">Shipment Tracking URL: </span>
-                              <a href="https://www.shiprocket.in/shipment-tracking/" target="_blank" rel="noopener noreferrer" className="text-[#E31E24] hover:underline">https://www.shiprocket.in/shipment-tracking/</a>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 pt-1">
-                            <button
-                              onClick={handleFetchShiprocketStatus}
-                              disabled={isFetchingShiprocketStatus}
-                              className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
-                            >
-                              {isFetchingShiprocketStatus ? "Checking…" : "Click to Get Current Status of Shiprocket Details"}
-                            </button>
-                            <a
-                              href={`https://wa.me/91${(order.billing.phone || "").replace(/\D/g, "")}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded font-sans"
-                            >
-                              Whatsapp to User
-                            </a>
-                          </div>
-
-                          {canSpeedPost && (
-                            <div className="mt-1 bg-gray-50 border border-gray-200 rounded p-3 space-y-2">
-                              <div className="text-xs font-bold text-gray-600 font-sans">Speed Post Details</div>
-                              <div className={speedPost?.toLowerCase() === "yes" ? "grid grid-cols-2 gap-2" : ""}>
-                                <div>
-                                  <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Speed Post:</div>
-                                  <select
-                                    value={speedPost}
-                                    onChange={(e) => setSpeedPost(e.target.value)}
-                                    className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 font-sans focus:outline-none focus:border-[#E31E24]"
-                                  >
-                                    <option value="no">No</option>
-                                    <option value="yes">Yes</option>
-                                  </select>
-                                </div>
-                                {speedPost?.toLowerCase() === "yes" && (
-                                  <div>
-                                    <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1">Speed Tracking ID:</div>
-                                    <input
-                                      type="text"
-                                      value={speedTrackingId}
-                                      onChange={(e) => setSpeedTrackingId(e.target.value)}
-                                      placeholder="Enter Speed Tracking ID"
-                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 font-sans focus:outline-none focus:border-[#E31E24]"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                              {speedPost?.toLowerCase() === "yes" && (
-                                <div className="text-xs font-sans">
-                                  <span className="text-gray-500">Speed Post Tracking URL: </span>
-                                  <a
-                                    href={speedTrackingId?.trim() ? `https://t.17track.net/en#nums=${encodeURIComponent(speedTrackingId.trim())}` : "https://www.17track.net/en/"}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[#E31E24] hover:underline"
-                                  >
-                                    https://www.17track.net/en/
-                                  </a>
-                                </div>
-                              )}
+                                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                                  <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z" />
+                                </svg>
+                                <span>WhatsApp Customer</span>
+                              </a>
                             </div>
                           )}
                         </div>
 
                         {/* Billing */}
-                        <div className="p-4 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Billing</h4>
+                        <div className="p-5 space-y-3.5">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                            <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider font-sans">
+                              <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                              </svg>
+                              <span>Billing Address</span>
+                            </div>
                             {canEditUserDetail && (
                               <button
                                 onClick={() => {
                                   if (!isEditingBilling) setBillingForm({ ...order.billing });
                                   setIsEditingBilling(!isEditingBilling);
                                 }}
-                                className="text-gray-400 hover:text-[#E31E24]"
+                                className="text-xs text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium transition-colors cursor-pointer"
                                 title="Edit billing address"
                               >
                                 <PencilIcon />
+                                <span>Edit</span>
                               </button>
                             )}
                           </div>
@@ -1288,53 +1355,28 @@ export default function OrderDetailPage() {
                           ) : (
                             renderAddress(order.billing, true)
                           )}
-
-                          <div className="pt-2 border-t border-gray-100 space-y-2">
-                            <div className="flex items-center gap-2">
-                              {canTekipost && (
-                                <button
-                                  onClick={handleSendToTekipost}
-                                  disabled={isSendingTekipost || isLoadingWeight || tekipostStatus === "Sent"}
-                                  className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
-                                >
-                                  {isSendingTekipost ? "Building…" : "Send to Tekipost"}
-                                </button>
-                              )}
-                              <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans ${tekipostStatus === "Sent" ? "text-emerald-700 border-emerald-600" : "text-[#E31E24] border-[#E31E24]"}`}>
-                                Status: {tekipostStatus}
-                              </span>
-                            </div>
-                            <div className="text-xs font-sans"><span className="text-gray-500">Tracking No. :</span></div>
-                            <div className="text-xs font-sans"><span className="text-gray-500">Courier Name:</span></div>
-                            <div className="text-xs font-sans"><span className="text-gray-500">Status:</span></div>
-                            <div className="text-xs font-sans">
-                              <span className="text-gray-500">Tracking URL: </span>
-                              <a href="https://app.tekipost.com/track-order" target="_blank" rel="noopener noreferrer" className="text-[#E31E24] hover:underline">https://app.tekipost.com/track-order</a>
-                            </div>
-                            <button
-                              onClick={handleFetchTekipostStatus}
-                              disabled={isFetchingTekipostStatus}
-                              className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
-                            >
-                              {isFetchingTekipostStatus ? "Checking…" : "Click to Get Current Status of tekipost Details"}
-                            </button>
-                          </div>
                         </div>
 
                         {/* Shipping */}
-                        <div className="p-4 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Shipping</h4>
+                        <div className="p-5 space-y-3.5">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                            <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider font-sans">
+                              <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+                              </svg>
+                              <span>Shipping Address</span>
+                            </div>
                             {canEditUserDetail && (
                               <button
                                 onClick={() => {
                                   if (!isEditingShipping) setShippingForm({ ...order.shipping });
                                   setIsEditingShipping(!isEditingShipping);
                                 }}
-                                className="text-gray-400 hover:text-[#E31E24]"
+                                className="text-xs text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium transition-colors cursor-pointer"
                                 title="Edit shipping address"
                               >
                                 <PencilIcon />
+                                <span>Edit</span>
                               </button>
                             )}
                           </div>
@@ -1347,81 +1389,484 @@ export default function OrderDetailPage() {
 
                           {/* Shipping Method Details */}
                           {order.shipping_lines && order.shipping_lines.length > 0 && (
-                            <div className="pt-2.5 border-t border-gray-100 space-y-1.5">
-                              <div className="text-[10px] font-semibold text-gray-500 uppercase font-sans">Shipping Method</div>
+                            <div className="pt-2.5 border-t border-slate-100 space-y-1.5">
+                              <div className="text-[10px] font-bold text-slate-400 uppercase font-sans">Shipping Method</div>
                               {order.shipping_lines.map((s) => (
-                                <div key={s.id} className="text-xs font-sans text-gray-800 flex items-center justify-between bg-gray-50 rounded px-2.5 py-1.5 border border-gray-100">
+                                <div key={s.id} className="text-xs font-sans text-slate-800 flex items-center justify-between bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-200/80">
                                   <div className="flex items-center gap-1.5">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-gray-500 shrink-0">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-slate-500 shrink-0">
                                       <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.25V3.75A1.125 1.125 0 0013.125 2.625h-9.75A1.125 1.125 0 002.25 3.75v10.5" />
                                     </svg>
-                                    <span className="font-medium text-gray-900">{s.method_title || "Shipping"}</span>
+                                    <span className="font-semibold text-slate-900">{s.method_title || "Shipping"}</span>
                                   </div>
-                                  {/* <span className="font-semibold text-gray-700">{order.currency_symbol}{parseFloat(s.total || "0").toFixed(2)}</span> */}
                                 </div>
                               ))}
                             </div>
                           )}
 
                           {order.customer_note && (
-                            <div className="pt-3 border-t border-gray-100 text-xs font-sans">
-                              <div className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Customer provided note</div>
-                              <div className="text-gray-700">{order.customer_note}</div>
+                            <div className="pt-2.5 border-t border-slate-100 text-xs font-sans">
+                              <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Customer Note</div>
+                              <div className="text-slate-700 bg-amber-50/70 border border-amber-200/70 p-2.5 rounded-lg text-xs leading-relaxed italic">{order.customer_note}</div>
                             </div>
                           )}
-
-                          <div className="pt-2 border-t border-gray-100 space-y-2">
-                            <div className="flex items-center gap-2">
-                              {canDtdc && (
-                                <button
-                                  onClick={handleSendToDtdc}
-                                  disabled={isSendingDtdc || isLoadingWeight || isDtdcSent}
-                                  className="text-[10px] font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-gray-300 px-3 py-1.5 rounded transition-colors font-sans"
-                                >
-                                  {isSendingDtdc ? "Sending…" : "Send to DTDC"}
-                                </button>
-                              )}
-                              <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded border font-sans ${isDtdcSent ? "text-emerald-700 border-emerald-600" : "text-[#E31E24] border-[#E31E24]"}`}>
-                                Status: {dtdcStatus}
-                              </span>
-                            </div>
-                            {dtdcReference && (
-                              <div className="text-xs font-sans">
-                                <span className="text-gray-500">DTDC Ref No.: </span>
-                                <span className="font-semibold text-gray-800">{dtdcReference}</span>
-                              </div>
-                            )}
-                            {/* <div className="text-xs font-sans">
-                              <span className="text-gray-500">DTDC Tracking URL: </span>
-                              <a
-                                href={dtdcReference ? `https://track.dtdc.com/ctbs-tracking/customerInterface.tr?submitName=showTrackingDetail&consignmentNo=${dtdcReference}` : "https://track.dtdc.com/"}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[#E31E24] hover:underline"
-                              >
-                                https://track.dtdc.com/
-                              </a>
-                            </div> */}
-                          </div>
                         </div>
                       </div>
                     </div>
 
+                    {/* Courier & Shipping Fulfillment Tab Container */}
+                    {(canShiprocket || canTekipost || canDtdc || canSpeedPost) && (
+                      <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
+                        {/* Header */}
+                        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2 bg-white">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-red-50 text-[#E31E24] flex items-center justify-center font-bold text-sm">
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="1" y="3" width="15" height="13" />
+                                <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+                                <circle cx="5.5" cy="18.5" r="2.5" />
+                                <circle cx="18.5" cy="18.5" r="2.5" />
+                              </svg>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold text-slate-800">Courier & Shipping Fulfillment</h3>
+                              <p className="text-[11px] text-slate-400 font-sans">Dispatch, tracking status and shipping carrier integrations</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            {/* Summary pills */}
+                            <div className="hidden sm:flex items-center gap-2">
+                              {canShiprocket && (
+                                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${shiprocketStatus === "Sent" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-slate-500 bg-slate-50 border-slate-200"
+                                  }`}>
+                                  Shiprocket: {shiprocketStatus}
+                                </span>
+                              )}
+                              {canTekipost && (
+                                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${tekipostStatus === "Sent" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-slate-500 bg-slate-50 border-slate-200"
+                                  }`}>
+                                  TekiPost: {tekipostStatus}
+                                </span>
+                              )}
+                              {canDtdc && (
+                                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${isDtdcSent ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-slate-500 bg-slate-50 border-slate-200"
+                                  }`}>
+                                  DTDC: {dtdcStatus}
+                                </span>
+                              )}
+                              {canSpeedPost && speedPost?.toLowerCase() === "yes" && (
+                                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border text-blue-700 bg-blue-50 border-blue-200">
+                                  Speed Post: Yes
+                                </span>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setIsFulfillmentBoxOpen(!isFulfillmentBoxOpen)}
+                              className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer text-slate-400"
+                              title={isFulfillmentBoxOpen ? "Collapse" : "Expand"}
+                            >
+                              <svg viewBox="0 0 20 20" fill="currentColor" className={`w-4 h-4 transition-transform ${isFulfillmentBoxOpen ? "" : "rotate-180"}`}>
+                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Body */}
+                        {isFulfillmentBoxOpen && (
+                          <div className="p-5 space-y-4">
+                            {/* Weight Bar (used across all couriers for shipping) */}
+                            {/* {canWeight && (
+                              <div className="bg-slate-50/80 border border-slate-200/70 rounded-lg p-3 flex items-center justify-between flex-wrap gap-3">
+                                <div className="flex items-center gap-2">
+                                  <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 3v18" />
+                                    <rect x="4" y="7" width="16" height="12" rx="2" />
+                                    <circle cx="12" cy="13" r="2" />
+                                  </svg>
+                                  <div>
+                                    <div className="text-xs font-bold text-slate-800">Order Parcel Weight</div>
+                                    <div className="text-[11px] text-slate-500 font-sans">Used for courier shipping rates & manifest calculation</div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <label className="text-xs font-semibold text-slate-600">Weight (kg):</label>
+                                  <div className="relative">
+                                    <input
+                                      type="text"
+                                      value={isLoadingWeight ? "Calculating…" : weight}
+                                      disabled={isLoadingWeight}
+                                      onChange={(e) => setWeight(e.target.value)}
+                                      className="w-32 bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-sans outline-none focus:ring-2 focus:ring-red-100 focus:border-[#E31E24] disabled:bg-slate-100 disabled:text-slate-400 font-mono shadow-2xs text-right font-bold"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            )} */}
+
+                            {/* Tabs Navigation */}
+                            <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
+                              {canShiprocket && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveFulfillmentTab("shiprocket")}
+                                  className={`px-4 py-2 rounded-lg text-xs font-semibold font-sans transition-all flex items-center gap-2 shrink-0 cursor-pointer ${activeFulfillmentTab === "shiprocket"
+                                    ? "bg-[#E31E24] text-white shadow-xs"
+                                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                                    }`}
+                                >
+                                  <span>🚀 Shiprocket</span>
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeFulfillmentTab === "shiprocket"
+                                    ? "bg-white/20 text-white"
+                                    : shiprocketStatus === "Sent" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"
+                                    }`}>
+                                    {shiprocketStatus}
+                                  </span>
+                                </button>
+                              )}
+
+                              {canTekipost && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveFulfillmentTab("tekipost")}
+                                  className={`px-4 py-2 rounded-lg text-xs font-semibold font-sans transition-all flex items-center gap-2 shrink-0 cursor-pointer ${activeFulfillmentTab === "tekipost"
+                                    ? "bg-[#E31E24] text-white shadow-xs"
+                                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                                    }`}
+                                >
+                                  <span>📦 TekiPost</span>
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeFulfillmentTab === "tekipost"
+                                    ? "bg-white/20 text-white"
+                                    : tekipostStatus === "Sent" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"
+                                    }`}>
+                                    {tekipostStatus}
+                                  </span>
+                                </button>
+                              )}
+
+                              {canDtdc && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveFulfillmentTab("dtdc")}
+                                  className={`px-4 py-2 rounded-lg text-xs font-semibold font-sans transition-all flex items-center gap-2 shrink-0 cursor-pointer ${activeFulfillmentTab === "dtdc"
+                                    ? "bg-[#E31E24] text-white shadow-xs"
+                                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                                    }`}
+                                >
+                                  <span>🚚 DTDC</span>
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeFulfillmentTab === "dtdc"
+                                    ? "bg-white/20 text-white"
+                                    : isDtdcSent ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"
+                                    }`}>
+                                    {dtdcStatus}
+                                  </span>
+                                </button>
+                              )}
+
+                              {canSpeedPost && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveFulfillmentTab("speedpost")}
+                                  className={`px-4 py-2 rounded-lg text-xs font-semibold font-sans transition-all flex items-center gap-2 shrink-0 cursor-pointer ${activeFulfillmentTab === "speedpost"
+                                    ? "bg-[#E31E24] text-white shadow-xs"
+                                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                                    }`}
+                                >
+                                  <span>📮 Speed Post</span>
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeFulfillmentTab === "speedpost"
+                                    ? "bg-white/20 text-white"
+                                    : speedPost?.toLowerCase() === "yes" ? "bg-blue-100 text-blue-800" : "bg-slate-200 text-slate-600"
+                                    }`}>
+                                    {speedPost?.toLowerCase() === "yes" ? "Active" : "Off"}
+                                  </span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Tab 1: Shiprocket Content */}
+                            {activeFulfillmentTab === "shiprocket" && canShiprocket && (
+                              <div className="bg-slate-50/50 border border-slate-200/70 rounded-xl p-5 space-y-4">
+                                <div className="flex items-center justify-between flex-wrap gap-3">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={handleSendToShiprocket}
+                                      disabled={isSendingShiprocket || isLoadingWeight || shiprocketStatus === "Sent"}
+                                      className="text-xs font-semibold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-slate-300 px-4 py-2 rounded-lg transition-all shadow-sm shadow-red-500/20 font-sans cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
+                                    >
+                                      {isSendingShiprocket ? (
+                                        <>
+                                          <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                          <span>Building Order…</span>
+                                        </>
+                                      ) : (
+                                        "Send to Shiprocket"
+                                      )}
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={handleFetchShiprocketStatus}
+                                      disabled={isFetchingShiprocketStatus}
+                                      className="text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 disabled:bg-slate-50 border border-slate-300 px-3.5 py-2 rounded-lg transition-colors font-sans cursor-pointer disabled:cursor-not-allowed shadow-2xs"
+                                    >
+                                      {isFetchingShiprocketStatus ? "Checking Status…" : "Get Shiprocket Status"}
+                                    </button>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-500 font-sans">Current Status:</span>
+                                    <span className={`text-xs font-bold px-3 py-1 rounded-full border font-sans ${shiprocketStatus === "Sent" ? "text-emerald-700 border-emerald-300 bg-emerald-50" : "text-[#E31E24] border-red-200 bg-red-50"
+                                      }`}>
+                                      {shiprocketStatus}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Shiprocket AWB Code</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                  </div>
+                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Pickup Date</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                  </div>
+                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Courier Name</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                  </div>
+                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Estimated Delivery Date</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                  </div>
+                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs sm:col-span-2">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Shipment Tracking URL</div>
+                                    <a
+                                      href="https://www.shiprocket.in/shipment-tracking/"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-[#E31E24] hover:underline font-medium break-all flex items-center gap-1"
+                                    >
+                                      <span>https://www.shiprocket.in/shipment-tracking/</span>
+                                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Tab 2: TekiPost Content */}
+                            {activeFulfillmentTab === "tekipost" && canTekipost && (
+                              <div className="bg-slate-50/50 border border-slate-200/70 rounded-xl p-5 space-y-4">
+                                <div className="flex items-center justify-between flex-wrap gap-3">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={handleSendToTekipost}
+                                      disabled={isSendingTekipost || isLoadingWeight || tekipostStatus === "Sent"}
+                                      className="text-xs font-semibold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-slate-300 px-4 py-2 rounded-lg transition-all shadow-sm shadow-red-500/20 font-sans cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
+                                    >
+                                      {isSendingTekipost ? (
+                                        <>
+                                          <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                          <span>Building Order…</span>
+                                        </>
+                                      ) : (
+                                        "Send to TekiPost"
+                                      )}
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={handleFetchTekipostStatus}
+                                      disabled={isFetchingTekipostStatus}
+                                      className="text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 disabled:bg-slate-50 border border-slate-300 px-3.5 py-2 rounded-lg transition-colors font-sans cursor-pointer disabled:cursor-not-allowed shadow-2xs"
+                                    >
+                                      {isFetchingTekipostStatus ? "Checking Status…" : "Get TekiPost Status"}
+                                    </button>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-500 font-sans">Current Status:</span>
+                                    <span className={`text-xs font-bold px-3 py-1 rounded-full border font-sans ${tekipostStatus === "Sent" ? "text-emerald-700 border-emerald-300 bg-emerald-50" : "text-[#E31E24] border-red-200 bg-red-50"
+                                      }`}>
+                                      {tekipostStatus}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tracking No.</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                  </div>
+                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Courier Name</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                  </div>
+                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Status</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                  </div>
+                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs sm:col-span-3">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tracking URL</div>
+                                    <a
+                                      href="https://app.tekipost.com/track-order"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-[#E31E24] hover:underline font-medium break-all flex items-center gap-1"
+                                    >
+                                      <span>https://app.tekipost.com/track-order</span>
+                                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Tab 3: DTDC Content */}
+                            {activeFulfillmentTab === "dtdc" && canDtdc && (
+                              <div className="bg-slate-50/50 border border-slate-200/70 rounded-xl p-5 space-y-4">
+                                <div className="flex items-center justify-between flex-wrap gap-3">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={handleSendToDtdc}
+                                      disabled={isSendingDtdc || isLoadingWeight || isDtdcSent}
+                                      className="text-xs font-semibold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-slate-300 px-4 py-2 rounded-lg transition-all shadow-sm shadow-red-500/20 font-sans cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
+                                    >
+                                      {isSendingDtdc ? (
+                                        <>
+                                          <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                          <span>Sending…</span>
+                                        </>
+                                      ) : (
+                                        "Send to DTDC"
+                                      )}
+                                    </button>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-500 font-sans">Current Status:</span>
+                                    <span className={`text-xs font-bold px-3 py-1 rounded-full border font-sans ${isDtdcSent ? "text-emerald-700 border-emerald-300 bg-emerald-50" : "text-[#E31E24] border-red-200 bg-red-50"
+                                      }`}>
+                                      {dtdcStatus}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="bg-white p-4 rounded-lg border border-slate-200/80 shadow-2xs">
+                                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">DTDC Reference No.</div>
+                                  <div className="text-sm font-bold text-slate-900 font-mono">
+                                    {dtdcReference || <span className="text-slate-400 font-normal italic">No reference number generated yet.</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Tab 4: Speed Post Content */}
+                            {activeFulfillmentTab === "speedpost" && canSpeedPost && (
+                              <div className="bg-slate-50/50 border border-slate-200/70 rounded-xl p-5 space-y-4">
+                                <div className="flex items-center justify-between flex-wrap gap-3">
+                                  <div className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                    <span>Speed Post Configuration</span>
+                                  </div>
+                                  <span className={`text-xs font-bold px-3 py-1 rounded-full border font-sans ${speedPost?.toLowerCase() === "yes" ? "text-emerald-700 border-emerald-300 bg-emerald-50" : "text-slate-500 border-slate-200 bg-slate-50"
+                                    }`}>
+                                    {speedPost?.toLowerCase() === "yes" ? "Enabled" : "Disabled"}
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white p-4 rounded-lg border border-slate-200/80 shadow-2xs">
+                                  <div>
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Speed Post Enabled:</label>
+                                    <select
+                                      value={speedPost}
+                                      onChange={(e) => setSpeedPost(e.target.value)}
+                                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 font-sans outline-none focus:ring-2 focus:ring-red-100 focus:border-[#E31E24] shadow-2xs font-semibold"
+                                    >
+                                      <option value="no">No</option>
+                                      <option value="yes">Yes</option>
+                                    </select>
+                                  </div>
+
+                                  {speedPost?.toLowerCase() === "yes" && (
+                                    <div>
+                                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Speed Tracking ID:</label>
+                                      <input
+                                        type="text"
+                                        value={speedTrackingId}
+                                        onChange={(e) => setSpeedTrackingId(e.target.value)}
+                                        placeholder="Enter Tracking ID (e.g. EM123456789IN)"
+                                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 font-mono outline-none focus:ring-2 focus:ring-red-100 focus:border-[#E31E24] shadow-2xs"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+
+                                {speedPost?.toLowerCase() === "yes" && (
+                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs text-xs font-sans">
+                                    <span className="text-slate-400 font-medium">Tracking Portal URL: </span>
+                                    <a
+                                      href={speedTrackingId?.trim() ? `https://t.17track.net/en#nums=${encodeURIComponent(speedTrackingId.trim())}` : "https://www.17track.net/en/"}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[#E31E24] hover:underline font-medium inline-flex items-center gap-1"
+                                    >
+                                      <span>https://www.17track.net/en/</span>
+                                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Line items */}
-                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                    <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
+                      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-red-50 text-[#E31E24] flex items-center justify-center font-bold text-sm">
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="m7.5 4.27 9 5.15" />
+                              <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                              <path d="m3.3 7 8.7 5 8.7-5" />
+                              <path d="M12 22V12" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-800">Items Ordered</h3>
+                            <p className="text-[11px] text-slate-400 font-sans">{order.line_items.length} {order.line_items.length === 1 ? "item" : "items"} in this order</p>
+                          </div>
+                        </div>
+                        {order.line_items.length > 0 && (
+                          <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200/60 font-mono">
+                            Subtotal: {order.currency_symbol}{itemsSubtotal.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse text-xs">
                           <thead>
-                            <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider">
-                              <th className="py-2.5 px-4 font-bold">Item</th>
-                              <th className="py-2.5 px-4 font-bold">Category</th>
-                              <th className="py-2.5 px-4 font-bold">Code</th>
-                              <th className="py-2.5 px-4 font-bold text-right">Price</th>
-                              <th className="py-2.5 px-4 font-bold text-right">Qty</th>
-                              <th className="py-2.5 px-4 font-bold text-right">Total</th>
+                            <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-500 font-semibold text-[11px] uppercase tracking-wider">
+                              <th className="py-3 px-5 font-semibold">Item & Details</th>
+                              <th className="py-3 px-4 font-semibold">Category</th>
+                              <th className="py-3 px-4 font-semibold">Code / SKU</th>
+                              <th className="py-3 px-4 font-semibold text-right">Price</th>
+                              <th className="py-3 px-4 font-semibold text-right">Qty</th>
+                              <th className="py-3 px-5 font-semibold text-right">Total</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-gray-100">
+                          <tbody className="divide-y divide-slate-100">
                             {order.line_items.map((li) => {
                               const itemCategory = li.category || li.meta_data?.find((x) => (x.key || "").toLowerCase() === "category")?.value || "";
                               const itemCode = li.code || li.sku || li.meta_data?.find((x) => ["code", "sku", "_sku"].includes((x.key || "").toLowerCase()))?.value || "";
@@ -1455,180 +1900,313 @@ export default function OrderDetailPage() {
                               const otherMeta = (li.meta_data || []).filter((m) => !knownKeys.has((m.key || "").toLowerCase()));
 
                               return (
-                                <tr key={li.id}>
-                                  <td className="py-3 px-4 font-sans text-gray-900 font-medium">
+                                <tr key={li.id} className="hover:bg-slate-50/50 transition-colors">
+                                  <td className="py-3.5 px-5 font-sans text-slate-900 font-medium">
                                     <div className="flex items-start gap-3">
                                       <img
                                         src={li.image || "/logo.svg"}
                                         alt={li.name}
-                                        className="w-10 h-10 object-cover rounded border border-gray-200 shrink-0 mt-0.5"
+                                        className="w-11 h-11 object-cover rounded-lg border border-slate-200/80 shrink-0 mt-0.5 shadow-2xs"
                                         onError={(e) => { (e.target as HTMLImageElement).src = "/logo.svg"; }}
                                       />
-                                      <div className="flex flex-col gap-0.5 pb-2 min-w-0">
+                                      <div className="flex flex-col gap-1 min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                          <span className="text-[#0073aa] hover:underline font-medium leading-snug cursor-pointer">{li.name}</span>
+                                          <span className="text-slate-900 hover:text-[#E31E24] font-semibold text-xs leading-snug cursor-pointer transition-colors">
+                                            {li.name}
+                                          </span>
                                           {itemVariationId > 0 && (
-                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-700 border border-gray-250 font-mono">
-                                              Variation ID: #{itemVariationId}
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200/60 font-mono">
+                                              Var #{itemVariationId}
                                             </span>
                                           )}
                                         </div>
 
-                                        {/* Metadata list (Medium, Category, Code, etc.) formatted matching WooCommerce style */}
-                                        <div className="flex flex-col gap-0.5 mt-0.5 text-[11px] font-sans text-gray-600">
+                                        {/* Modern chip metadata */}
+                                        <div className="flex flex-wrap gap-1.5 mt-0.5">
                                           {itemMedium && (
-                                            <div className="flex items-baseline gap-1.5">
-                                              <span className="font-bold text-gray-700">Medium:</span>
-                                              <span>{itemMedium}</span>
-                                            </div>
-                                          )}
-                                          {itemCategory && (
-                                            <div className="flex items-baseline gap-1.5">
-                                              <span className="font-bold text-gray-700">Category:</span>
-                                              <span>{itemCategory}</span>
-                                            </div>
-                                          )}
-                                          {itemCode && (
-                                            <div className="flex items-baseline gap-1.5">
-                                              <span className="font-bold text-gray-700">Code:</span>
-                                              <span>{itemCode}</span>
-                                            </div>
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200/60">
+                                              <span className="text-slate-400 font-normal">Medium:</span> {itemMedium}
+                                            </span>
                                           )}
                                           {itemSession && (
-                                            <div className="flex items-baseline gap-1.5">
-                                              <span className="font-bold text-gray-700">Session:</span>
-                                              <span>{formatMetaValue(itemSession)}</span>
-                                            </div>
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200/60">
+                                              <span className="text-blue-400 font-normal">Session:</span> {formatMetaValue(itemSession)}
+                                            </span>
                                           )}
                                           {itemType && (
-                                            <div className="flex items-baseline gap-1.5">
-                                              <span className="font-bold text-gray-700">Type:</span>
-                                              <span>{formatMetaValue(itemType)}</span>
-                                            </div>
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200/60">
+                                              <span className="text-purple-400 font-normal">Type:</span> {formatMetaValue(itemType)}
+                                            </span>
                                           )}
                                           {itemDemand && (
-                                            <div className="flex items-baseline gap-1.5">
-                                              <span className="font-bold text-gray-700">Demand:</span>
-                                              <span>{itemDemand}</span>
-                                            </div>
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60">
+                                              <span className="text-amber-400 font-normal">Demand:</span> {itemDemand}
+                                            </span>
                                           )}
                                           {itemEnrollment && (
-                                            <div className="flex items-baseline gap-1.5">
-                                              <span className="font-bold text-gray-700">Enrolment No:</span>
-                                              <span className="font-mono">{itemEnrollment}</span>
-                                            </div>
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-mono">
+                                              <span className="text-emerald-500 font-normal">Enrollment:</span> {itemEnrollment}
+                                            </span>
                                           )}
                                           {itemPaymentType && (
-                                            <div className="flex items-baseline gap-1.5">
-                                              <span className="font-bold text-gray-700">Payment Type:</span>
-                                              <span className="uppercase">{itemPaymentType}</span>
-                                            </div>
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200/60 uppercase">
+                                              {itemPaymentType}
+                                            </span>
                                           )}
                                           {otherMeta.length > 0 && (
                                             otherMeta.map((m) => (
-                                              <div key={m.id || m.key} className="flex items-baseline gap-1.5">
-                                                <span className="font-bold text-gray-700">{m.key}:</span>
-                                                <span>{m.value}</span>
-                                              </div>
+                                              <span key={m.id || m.key} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-50 text-slate-600 border border-slate-200/60">
+                                                <span className="text-slate-400 font-normal">{m.key}:</span> {m.value}
+                                              </span>
                                             ))
                                           )}
                                         </div>
                                       </div>
                                     </div>
                                   </td>
-                                  <td className="py-3 px-4 font-sans text-gray-700 align-top pt-3 font-medium">{itemCategory || "—"}</td>
-                                  <td className="py-3 px-4 font-sans text-gray-700 align-top pt-3">{itemCode || "—"}</td>
-                                  <td className="py-3 px-4 font-sans text-gray-700 text-right align-top pt-3">{order.currency_symbol}{parseFloat(li.price).toFixed(2)}</td>
-                                  <td className="py-3 px-4 font-sans text-gray-700 text-right align-top pt-3">× {li.quantity}</td>
-                                  <td className="py-3 px-4 font-sans text-gray-900 font-semibold text-right align-top pt-3">{order.currency_symbol}{parseFloat(li.total).toFixed(2)}</td>
+                                  <td className="py-3.5 px-4 font-sans text-slate-700 align-top text-xs">
+                                    {itemCategory ? (
+                                      <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md font-medium text-[11px] border border-slate-200/50">
+                                        {itemCategory}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-300">—</span>
+                                    )}
+                                  </td>
+                                  <td className="py-3.5 px-4 font-mono text-slate-600 align-top text-xs">{itemCode || <span className="text-slate-300">—</span>}</td>
+                                  <td className="py-3.5 px-4 font-sans text-slate-700 text-right align-top text-xs font-medium">
+                                    <div>{order.currency_symbol}{parseFloat(li.price).toFixed(2)}</div>
+                                  </td>
+                                  <td className="py-3.5 px-4 font-sans text-slate-700 text-right align-top text-xs">
+                                    <div className="font-semibold text-slate-800">× {li.quantity}</div>
+                                    {isRefundMode && (
+                                      <div className="mt-1.5 flex justify-end">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={li.quantity}
+                                          value={refundQty[li.id] ?? 0}
+                                          onChange={(e) => handleItemRefundQtyChange(li.id, e.target.value, parseFloat(li.total), li.quantity)}
+                                          className="w-14 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-mono bg-white shadow-2xs"
+                                        />
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-3.5 px-5 font-sans text-slate-900 font-bold text-right align-top text-xs">
+                                    <div>{order.currency_symbol}{parseFloat(li.total).toFixed(2)}</div>
+                                    {isRefundMode && (
+                                      <div className="mt-1.5 flex justify-end">
+                                        <input
+                                          type="number"
+                                          step="any"
+                                          min={0}
+                                          max={parseFloat(li.total)}
+                                          value={refundItemTotal[li.id] ?? 0}
+                                          onChange={(e) => handleItemRefundTotalChange(li.id, e.target.value, parseFloat(li.total))}
+                                          className="w-20 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-mono bg-white font-normal shadow-2xs"
+                                        />
+                                      </div>
+                                    )}
+                                  </td>
                                 </tr>
                               );
                             })}
                             {/* Fee lines */}
                             {order.fee_lines.map((f) => (
-                              <tr key={f.id} className="bg-gray-50/40">
-                                <td className="py-2.5 px-4 font-sans text-gray-700" colSpan={5}>
+                              <tr key={f.id} className="bg-amber-50/20">
+                                <td className="py-2.5 px-5 font-sans text-slate-700" colSpan={5}>
                                   <div className="flex items-center gap-2">
-                                    <span className="inline-block px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-50 text-amber-700 border border-amber-200">Fee</span>
-                                    <span>{f.name}</span>
+                                    <span className="inline-block px-2 py-0.5 text-[10px] font-semibold rounded bg-amber-50 text-amber-700 border border-amber-200">Fee</span>
+                                    <span className="font-medium text-slate-800">{f.name}</span>
                                   </div>
                                 </td>
-                                <td className="py-2.5 px-4 font-sans text-gray-700 text-right font-medium">{order.currency_symbol}{parseFloat(f.total).toFixed(2)}</td>
+                                <td className="py-2.5 px-5 font-sans text-slate-800 text-right font-semibold">{order.currency_symbol}{parseFloat(f.total).toFixed(2)}</td>
                               </tr>
                             ))}
 
                             {/* Shipping lines */}
                             {order.shipping_lines?.map((s) => (
-                              <tr key={s.id} className="bg-gray-50/40">
-                                <td className="py-2.5 px-4 font-sans text-gray-700" colSpan={5}>
+                              <tr key={s.id} className="bg-blue-50/20">
+                                <td className="py-2.5 px-5 font-sans text-slate-700" colSpan={5}>
                                   <div className="flex items-center gap-2">
-                                    <span className="inline-block px-1.5 py-0.5 text-[10px] font-semibold rounded bg-blue-50 text-blue-700 border border-blue-200">Shipping</span>
-                                    <span>{s.method_title || "Shipping"}</span>
+                                    <span className="inline-block px-2 py-0.5 text-[10px] font-semibold rounded bg-blue-50 text-blue-700 border border-blue-200">Shipping</span>
+                                    <span className="font-medium text-slate-800">{s.method_title || "Shipping"}</span>
                                   </div>
                                 </td>
-                                <td className="py-2.5 px-4 font-sans text-gray-700 text-right font-medium">{order.currency_symbol}{parseFloat(s.total || "0").toFixed(2)}</td>
+                                <td className="py-2.5 px-5 font-sans text-slate-800 text-right font-semibold">{order.currency_symbol}{parseFloat(s.total || "0").toFixed(2)}</td>
                               </tr>
                             ))}
                           </tbody>
-                          <tfoot>
-                            <tr className="border-t border-gray-200">
-                              <td colSpan={5} className="py-2 px-4 text-right text-gray-500 font-sans">Items subtotal</td>
-                              <td className="py-2 px-4 text-right text-gray-700 font-sans">{order.currency_symbol}{itemsSubtotal.toFixed(2)}</td>
+                          <tfoot className="bg-slate-50/50">
+                            <tr className="border-t border-slate-200">
+                              <td colSpan={5} className="py-2.5 px-5 text-right text-slate-500 font-sans text-xs">Items subtotal</td>
+                              <td className="py-2.5 px-5 text-right text-slate-800 font-sans font-medium text-xs">{order.currency_symbol}{itemsSubtotal.toFixed(2)}</td>
                             </tr>
-                            {/* {order.fee_lines.length > 0 && (
-                              <tr>
-                                <td colSpan={5} className="py-2 px-4 text-right text-gray-500 font-sans">Fees</td>
-                                <td className="py-2 px-4 text-right text-gray-700 font-sans">{order.currency_symbol}{feesTotal.toFixed(2)}</td>
-                              </tr>
-                            )} */}
                             {discountTotal > 0 && (
                               <tr>
-                                <td colSpan={5} className="py-2 px-4 text-right text-emerald-600 font-sans">
+                                <td colSpan={5} className="py-2 px-5 text-right text-emerald-600 font-sans text-xs font-medium">
                                   Discount {order.coupon_lines && order.coupon_lines.length > 0 ? `(${order.coupon_lines.map((c) => c.code).join(", ")})` : ""}
                                 </td>
-                                <td className="py-2 px-4 text-right text-emerald-600 font-sans">-{order.currency_symbol}{discountTotal.toFixed(2)}</td>
+                                <td className="py-2 px-5 text-right text-emerald-600 font-sans font-semibold text-xs">-{order.currency_symbol}{discountTotal.toFixed(2)}</td>
                               </tr>
                             )}
-                            <tr>
-                              <td colSpan={5} className="py-2.5 px-4 text-right text-gray-900 font-bold font-sans">Order Total</td>
-                              <td className="py-2.5 px-4 text-right text-gray-900 font-bold font-sans">{order.currency_symbol}{parseFloat(order.total).toFixed(2)}</td>
+                            <tr className="border-t border-slate-200/80 bg-slate-100/40">
+                              <td colSpan={5} className="py-3 px-5 text-right text-slate-900 font-bold font-sans text-sm">Order Total</td>
+                              <td className="py-3 px-5 text-right text-slate-900 font-black font-sans text-base">{order.currency_symbol}{parseFloat(order.total).toFixed(2)}</td>
                             </tr>
                           </tfoot>
                         </table>
                       </div>
+
+                      {/* Refund Area */}
+                      {!isRefundMode ? (
+                        /* Normal view: Bottom bar with Refund button on the left and notice on the right */
+                        <div className="border-t border-slate-100 px-5 py-3.5 flex items-center justify-between bg-slate-50/40">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsRefundMode(true);
+                              setRefundAmount("");
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-[#E31E24] bg-white hover:bg-red-50 border border-red-200 rounded-lg transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
+                          >
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                            </svg>
+                            Issue Refund
+                          </button>
+
+                          <div className="text-xs text-slate-400 font-sans flex items-center gap-1.5">
+                            <span className="w-4 h-4 rounded-full bg-slate-200/80 text-slate-500 inline-flex items-center justify-center text-[10px] font-bold">i</span>
+                            <span>This order is completed and no longer directly editable.</span>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Expanded Refund Panel */
+                        <div className="border-t border-slate-200 bg-slate-50/70">
+                          <div className="p-5 flex flex-col items-end gap-3">
+                            <div className="w-full flex items-center justify-between pb-3 border-b border-slate-200/60 flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-[#E31E24]"></span>
+                                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Manual Refund Setup</span>
+                              </div>
+                              <div className="flex items-center gap-4 text-xs font-sans">
+                                <div className="text-slate-500">
+                                  Already refunded: <span className="font-semibold text-slate-800 font-mono">{amountAlreadyRefunded > 0 ? `-${order.currency_symbol}${amountAlreadyRefunded.toFixed(2)}` : `-₹0.00`}</span>
+                                </div>
+                                <div className="text-slate-500">
+                                  Available: <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-mono">{order.currency_symbol}{totalAvailableToRefund.toFixed(2)}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 text-xs font-sans text-slate-700">
+                              <label htmlFor="restock_items" className="text-slate-600 cursor-pointer select-none font-medium">Restock refunded items:</label>
+                              <input
+                                id="restock_items"
+                                type="checkbox"
+                                checked={restockRefundedItems}
+                                onChange={(e) => setRestockRefundedItems(e.target.checked)}
+                                className="accent-[#E31E24] w-4 h-4 cursor-pointer rounded"
+                              />
+                            </div>
+
+                            <div className="flex items-center gap-3 text-xs">
+                              <span className="text-slate-600 font-medium">Refund amount:</span>
+                              <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">{order.currency_symbol}</span>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min={0}
+                                  max={totalAvailableToRefund}
+                                  placeholder="0.00"
+                                  value={refundAmount}
+                                  onChange={(e) => setRefundAmount(e.target.value)}
+                                  className="border border-slate-300 rounded-lg pl-6 pr-3 py-1.5 text-xs text-slate-900 text-right outline-none focus:ring-2 focus:ring-red-100 focus:border-[#E31E24] font-mono w-32 bg-white shadow-2xs font-semibold"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 text-xs">
+                              <span className="text-slate-600 font-medium">Reason for refund (optional):</span>
+                              <input
+                                type="text"
+                                placeholder="e.g. Customer return, damaged item..."
+                                value={refundReason}
+                                onChange={(e) => setRefundReason(e.target.value)}
+                                className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-red-100 focus:border-[#E31E24] font-sans w-64 bg-white shadow-2xs"
+                              />
+                            </div>
+
+                            <div className="mt-2 flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={handleManualRefund}
+                                disabled={isProcessingRefund}
+                                className="bg-[#E31E24] hover:bg-red-700 disabled:bg-slate-300 text-white font-semibold text-xs px-5 py-2 rounded-lg transition-all shadow-sm shadow-red-500/20 font-sans flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                              >
+                                {isProcessingRefund ? (
+                                  <>
+                                    <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                    <span>Processing Refund...</span>
+                                  </>
+                                ) : (
+                                  "Refund Manually"
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Left bottom corner Cancel button */}
+                          <div className="border-t border-slate-200/80 px-5 py-3 flex items-center justify-between bg-white">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsRefundMode(false);
+                                setRefundQty({});
+                                setRefundItemTotal({});
+                                setRefundAmount("");
+                                setRefundReason("");
+                              }}
+                              className="border border-slate-250 text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg px-4 py-1.5 text-xs font-medium font-sans transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <span className="text-[11px] text-slate-400">Items quantities and totals entered above will be recorded in the order log</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Downloadable product permissions */}
                     {canDownloadableProduct && (
-                      <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-150 bg-gray-50/50 rounded-t-lg">
-                          <h4 className="text-xs font-bold text-gray-700 font-sans">Downloadable product permissions</h4>
-                          <div className="flex items-center gap-2 text-gray-400">
+                      <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
+                        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-white">
+                          <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                            <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                              <polyline points="7 10 12 15 17 10" />
+                              <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
+                            Downloadable Product Permissions
+                          </h4>
+                          <div className="flex items-center gap-2 text-slate-400">
                             <button
                               type="button"
                               title="Downloadable product permissions allow customers to download digital products purchased in this order."
-                              className="w-4 h-4 flex items-center justify-center rounded-full text-[11px] font-bold text-gray-400 hover:text-gray-600 hover:bg-gray-200"
+                              className="w-4 h-4 flex items-center justify-center rounded-full text-[10px] font-bold text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-help"
                             >
                               ?
                             </button>
                             <button
                               type="button"
                               onClick={() => setIsDownloadsBoxOpen(!isDownloadsBoxOpen)}
-                              className="p-0.5 hover:text-gray-600 transition-colors"
+                              className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
                               title={isDownloadsBoxOpen ? "Collapse" : "Expand"}
                             >
-                              <svg viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 transition-transform ${isDownloadsBoxOpen ? "" : "rotate-180"}`}>
-                                <path d="M10 6l-5 5h10l-5-5z" />
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setIsDownloadsBoxOpen(!isDownloadsBoxOpen)}
-                              className="p-0.5 hover:text-gray-600 transition-colors"
-                              title={isDownloadsBoxOpen ? "Collapse" : "Expand"}
-                            >
-                              <svg viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 transition-transform ${isDownloadsBoxOpen ? "" : "rotate-180"}`}>
-                                <path d="M10 14l5-5H5l5 5z" />
+                              <svg viewBox="0 0 20 20" fill="currentColor" className={`w-4 h-4 transition-transform ${isDownloadsBoxOpen ? "" : "rotate-180"}`}>
+                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                               </svg>
                             </button>
                           </div>
@@ -1885,20 +2463,19 @@ export default function OrderDetailPage() {
                   {/* Right column */}
                   <div className="space-y-4">
                     {/* Order actions */}
-                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                      <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
-                        <h4 className="text-xs font-bold text-gray-700 font-sans">Order actions</h4>
-                        <div className="flex items-center gap-1 text-gray-400">
-                          <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path d="M10 6l-5 5h10l-5-5z" /></svg>
-                          <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5"><path d="M10 14l5-5H5l5 5z" /></svg>
-                        </div>
+                    <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
+                      <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#E31E24]"></span>
+                          Order Actions
+                        </h4>
                       </div>
                       <div className="p-4 space-y-3">
                         <div className="flex items-center gap-2">
                           <select
                             value={orderAction}
                             onChange={(e) => setOrderAction(e.target.value)}
-                            className="flex-1 bg-white border border-gray-250 rounded px-2.5 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
+                            className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 font-sans outline-none focus:ring-2 focus:ring-red-100 focus:border-[#E31E24] shadow-2xs"
                           >
                             <option value="">Choose an action...</option>
                             <option value="send_order_details">Send order details to customer</option>
@@ -1910,185 +2487,233 @@ export default function OrderDetailPage() {
                           <button
                             type="button"
                             disabled
-                            title="Not available yet"
-                            className="shrink-0 w-8 h-8 flex items-center justify-center border border-gray-250 rounded text-gray-300 cursor-not-allowed"
+                            title="Action executes on update"
+                            className="shrink-0 w-8 h-8 flex items-center justify-center border border-slate-200 rounded-lg text-slate-400 bg-slate-50 cursor-default"
                           >
                             →
                           </button>
                         </div>
-                        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                           <button
                             type="button"
                             disabled
                             title="Not available yet"
-                            className="text-[11px] font-semibold text-gray-300 font-sans cursor-not-allowed"
+                            className="text-xs font-medium text-slate-400 font-sans hover:text-red-600 transition-colors disabled:opacity-50 cursor-not-allowed"
                           >
                             Move to Trash
                           </button>
                           <button
                             onClick={handleUpdate}
                             disabled={isSaving}
-                            className="text-xs font-bold text-white bg-[#2271b1] hover:bg-[#135e96] disabled:bg-gray-300 px-4 py-2 rounded transition-colors font-sans"
+                            className="text-xs font-bold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-slate-300 px-5 py-2 rounded-lg transition-all shadow-sm shadow-red-500/20 active:scale-95 font-sans cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
                           >
-                            {isSaving ? "Updating…" : "Update"}
+                            {isSaving ? (
+                              <>
+                                <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                <span>Updating…</span>
+                              </>
+                            ) : (
+                              "Update Order"
+                            )}
                           </button>
                         </div>
                       </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-3 font-sans">
-                      <h4 className="text-xs font-bold text-gray-700 font-sans">Customer history</h4>
-
-                      <div className="space-y-0.5">
-                        <div className="text-xs text-gray-600 flex items-center gap-1.5 font-medium">
-                          <span>Total orders</span>
-                          <div className="relative group inline-flex items-center">
-                            <span
-                              className="inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] rounded-full bg-gray-200 text-gray-600 font-bold cursor-help"
-                            >
-                              ?
-                            </span>
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block w-52 p-2 bg-[#2c3338] text-white text-[11px] rounded shadow-xl z-50 text-center leading-snug pointer-events-none font-normal">
-                              Total number of orders for this customer, excluding cancelled orders, including the current one.
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-[#2c3338]" />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-xs font-semibold text-gray-900">{order.customer_stats.total_orders}</div>
+                    {/* Customer history */}
+                    <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
+                      <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                          <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <polyline points="16 11 18 13 22 9" />
+                          </svg>
+                          Customer History
+                        </h4>
                       </div>
-
-                      <div className="space-y-0.5">
-                        <div className="text-xs text-gray-600 flex items-center gap-1.5 font-medium">
-                          <span>Total revenue</span>
-                          <div className="relative group inline-flex items-center">
-                            <span
-                              className="inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] rounded-full bg-gray-200 text-gray-600 font-bold cursor-help"
-                            >
-                              ?
-                            </span>
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block w-56 p-2 bg-[#2c3338] text-white text-[11px] rounded shadow-xl z-50 text-center leading-snug pointer-events-none font-normal">
-                              This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders.
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-[#2c3338]" />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-xs font-semibold text-gray-900">
-                          {order.currency_symbol}{parseFloat(order.customer_stats.total_revenue || "0").toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                      </div>
-
-                      <div className="space-y-0.5">
-                        <div className="text-xs text-gray-600 font-medium">Average order value</div>
-                        <div className="text-xs font-semibold text-gray-900">
-                          {order.currency_symbol}{parseFloat(order.customer_stats.average_order_value || "0").toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                      </div>
-                    </div>
-
-
-
-                    {canNotes && (
-                      <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-3">
-                        <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Order notes</h4>
-                        <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase font-sans mb-1 block">Add note</label>
-                          <textarea
-                            value={newNoteContent}
-                            onChange={(e) => setNewNoteContent(e.target.value)}
-                            placeholder="Add note"
-                            className="w-full bg-white border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] resize-none"
-                            rows={3}
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <select
-                            value={newNoteType}
-                            onChange={(e) => setNewNoteType(e.target.value)}
-                            className="flex-1 bg-white border border-gray-250 rounded px-2 py-1.5 text-xs text-gray-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
-                          >
-                            <option value="">Private note</option>
-                            <option value="customer">Note to customer</option>
-                          </select>
-                          <button
-                            onClick={handleAddNote}
-                            disabled={isAddingNote || !newNoteContent.trim()}
-                            className="text-[10px] font-bold text-[#E31E24] border border-[#E31E24] hover:bg-red-50 disabled:text-gray-300 disabled:border-gray-200 disabled:hover:bg-transparent px-3 py-1.5 rounded transition-colors font-sans shrink-0"
-                          >
-                            {isAddingNote ? "Adding…" : "Add"}
-                          </button>
-                        </div>
-
-                        <div className="pt-2 border-t border-gray-100 space-y-2 max-h-96 overflow-y-auto">
-                          {isLoadingNotes ? (
-                            <div className="text-xs text-gray-400 font-sans">Loading notes…</div>
-                          ) : notes.length === 0 ? (
-                            <div className="text-xs text-gray-400 font-sans">No order notes available yet.</div>
-                          ) : (
-                            notes.map((note) => {
-                              const authorName = (note.author || "").trim();
-                              const isGenericAuthor =
-                                !authorName ||
-                                authorName.toLowerCase() === "woocommerce" ||
-                                authorName.toLowerCase() === "system" ||
-                                authorName.toLowerCase() === "wordpress";
-                              const displayAuthor = !isGenericAuthor
-                                ? authorName
-                                : /order status changed/i.test(note.content || "") && order?.updated_by
-                                  ? order.updated_by
-                                  : null;
-
-                              return (
-                                <div
-                                  key={note.id}
-                                  className={`rounded px-3 py-2 text-xs font-sans ${note.is_customer_note
-                                    ? "bg-blue-50 border border-blue-100"
-                                    : !displayAuthor && (note.is_system_note || isGenericAuthor)
-                                      ? "bg-purple-50 border border-purple-100"
-                                      : "bg-gray-50 border border-gray-150"
-                                    }`}
-                                >
-                                  <div className="text-gray-800 whitespace-pre-wrap">{note.content}</div>
-                                  <div className="mt-1.5 text-[11px] text-gray-500 font-sans flex items-center flex-wrap gap-x-1">
-                                    <span
-                                      className="border-b border-dotted border-gray-400 cursor-help"
-                                      title={new Date(note.date).toLocaleString()}
-                                    >
-                                      {formatNoteDate(note.date)}
-                                    </span>
-                                    {displayAuthor && (
-                                      <span>by {displayAuthor}</span>
-                                    )}
-                                    {canDeleteNote && (
-                                      <button
-                                        onClick={() => handleDeleteNote(note.id)}
-                                        disabled={deletingNoteId === note.id}
-                                        className="text-[#a00] hover:text-[#ba0000] underline ml-1 cursor-pointer font-normal disabled:text-gray-300"
-                                      >
-                                        {deletingNoteId === note.id ? "Deleting…" : "Delete note"}
-                                      </button>
-                                    )}
-                                  </div>
+                      <div className="p-4 space-y-2.5 font-sans">
+                        <div className="bg-slate-50/80 border border-slate-150 rounded-lg p-3">
+                          <div className="text-[11px] text-slate-500 flex items-center justify-between font-medium">
+                            <span className="flex items-center gap-1.5">
+                              <span>Total orders</span>
+                              <div className="relative group inline-flex items-center">
+                                <span className="inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] rounded-full bg-slate-200 text-slate-600 font-bold cursor-help">?</span>
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block w-52 p-2.5 bg-slate-900 text-white text-[11px] rounded-lg shadow-xl z-50 text-center leading-snug pointer-events-none font-normal">
+                                  Total number of orders for this customer, excluding cancelled orders, including the current one.
+                                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
                                 </div>
-                              );
-                            })
-                          )}
+                              </div>
+                            </span>
+                            <span className="text-sm font-bold text-slate-900 font-mono">{order.customer_stats.total_orders}</span>
+                          </div>
+                        </div>
+
+                        <div className="bg-emerald-50/50 border border-emerald-100 rounded-lg p-3">
+                          <div className="text-[11px] text-emerald-800 flex items-center justify-between font-medium">
+                            <span className="flex items-center gap-1.5">
+                              <span>Total revenue (LTV)</span>
+                              <div className="relative group inline-flex items-center">
+                                <span className="inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] rounded-full bg-emerald-200 text-emerald-800 font-bold cursor-help">?</span>
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block w-56 p-2.5 bg-slate-900 text-white text-[11px] rounded-lg shadow-xl z-50 text-center leading-snug pointer-events-none font-normal">
+                                  This is the Customer Lifetime Value, or the total amount you have earned from this customer&apos;s orders.
+                                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
+                                </div>
+                              </div>
+                            </span>
+                            <span className="text-sm font-bold text-emerald-900 font-mono">
+                              {order.currency_symbol}{parseFloat(order.customer_stats.total_revenue || "0").toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-3">
+                          <div className="text-[11px] text-blue-800 flex items-center justify-between font-medium">
+                            <span>Average order value</span>
+                            <span className="text-sm font-bold text-blue-900 font-mono">
+                              {order.currency_symbol}{parseFloat(order.customer_stats.average_order_value || "0").toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Order notes */}
+                    {canNotes && (
+                      <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
+                        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                            <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                            </svg>
+                            Order Notes
+                          </h4>
+                          <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full font-mono">
+                            {notes.length}
+                          </span>
+                        </div>
+
+                        <div className="p-4 space-y-3 font-sans">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Add Note</label>
+                            <textarea
+                              value={newNoteContent}
+                              onChange={(e) => setNewNoteContent(e.target.value)}
+                              placeholder="Write a note about this order..."
+                              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-red-100 focus:border-[#E31E24] resize-none shadow-2xs placeholder:text-slate-400"
+                              rows={3}
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={newNoteType}
+                              onChange={(e) => setNewNoteType(e.target.value)}
+                              className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-red-100 focus:border-[#E31E24] shadow-2xs"
+                            >
+                              <option value="">Private note</option>
+                              <option value="customer">Note to customer</option>
+                            </select>
+                            <button
+                              onClick={handleAddNote}
+                              disabled={isAddingNote || !newNoteContent.trim()}
+                              className="text-xs font-semibold text-[#E31E24] border border-red-200 bg-red-50 hover:bg-red-100 disabled:text-slate-400 disabled:border-slate-200 disabled:bg-slate-50 px-3.5 py-1.5 rounded-lg transition-colors shrink-0 cursor-pointer disabled:cursor-not-allowed"
+                            >
+                              {isAddingNote ? "Adding…" : "Add Note"}
+                            </button>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-100 space-y-2.5 max-h-96 overflow-y-auto pr-1">
+                            {isLoadingNotes ? (
+                              <div className="text-xs text-slate-400 py-3 text-center">Loading notes…</div>
+                            ) : notes.length === 0 ? (
+                              <div className="text-xs text-slate-400 py-3 text-center italic">No order notes recorded yet.</div>
+                            ) : (
+                              notes.map((note) => {
+                                const authorName = (note.author || "").trim();
+                                const isGenericAuthor =
+                                  !authorName ||
+                                  authorName.toLowerCase() === "woocommerce" ||
+                                  authorName.toLowerCase() === "system" ||
+                                  authorName.toLowerCase() === "wordpress";
+                                const displayAuthor = !isGenericAuthor
+                                  ? authorName
+                                  : /order status changed/i.test(note.content || "") && order?.updated_by
+                                    ? order.updated_by
+                                    : null;
+
+                                return (
+                                  <div
+                                    key={note.id}
+                                    className={`rounded-lg p-3 text-xs transition-colors ${note.is_customer_note
+                                      ? "bg-sky-50/70 border border-sky-200/80 text-sky-950"
+                                      : !displayAuthor && (note.is_system_note || isGenericAuthor)
+                                        ? "bg-purple-50/60 border border-purple-200/70 text-purple-950"
+                                        : "bg-slate-50 border border-slate-200/70 text-slate-800"
+                                      }`}
+                                  >
+                                    <div className="whitespace-pre-wrap leading-relaxed">{note.content}</div>
+                                    <div className="mt-2 text-[11px] text-slate-500 flex items-center justify-between flex-wrap gap-1 pt-1.5 border-t border-black/5">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span
+                                          className="font-medium cursor-help"
+                                          title={new Date(note.date).toLocaleString()}
+                                        >
+                                          {formatNoteDate(note.date)}
+                                        </span>
+                                        {displayAuthor && (
+                                          <span className="font-semibold text-slate-700">· {displayAuthor}</span>
+                                        )}
+                                      </div>
+                                      {canDeleteNote && (
+                                        <button
+                                          onClick={() => handleDeleteNote(note.id)}
+                                          disabled={deletingNoteId === note.id}
+                                          className="text-red-500 hover:text-red-700 hover:underline cursor-pointer disabled:text-slate-300 font-medium"
+                                        >
+                                          {deletingNoteId === note.id ? "Deleting…" : "Delete"}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
 
-                    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-2">
-                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider font-sans">Order attribution</h4>
-                      <div className="flex justify-between text-xs font-sans">
-                        <span className="text-gray-500">Origin</span>
-                        <span className="font-medium text-gray-900">{order.attribution.origin || "—"}</span>
+                    {/* Order attribution */}
+                    <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
+                      <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                          <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="2" y1="12" x2="22" y2="12" />
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                          </svg>
+                          Order Attribution
+                        </h4>
                       </div>
-                      <div className="flex justify-between text-xs font-sans">
-                        <span className="text-gray-500">Device type</span>
-                        <span className="font-medium text-gray-900">{order.attribution.device_type || "—"}</span>
-                      </div>
-                      <div className="flex justify-between text-xs font-sans">
-                        <span className="text-gray-500">Session page views</span>
-                        <span className="font-medium text-gray-900">{order.attribution.session_pages || "—"}</span>
+                      <div className="p-4 space-y-2 text-xs font-sans">
+                        <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                          <span className="text-slate-500">Origin</span>
+                          <span className="font-semibold text-slate-800 font-mono text-[11px] bg-slate-100 px-2 py-0.5 rounded">
+                            {order.attribution.origin || "Direct / Organic"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                          <span className="text-slate-500">Device type</span>
+                          <span className="font-semibold text-slate-800 capitalize bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                            {order.attribution.device_type || "Desktop"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center py-1">
+                          <span className="text-slate-500">Session page views</span>
+                          <span className="font-semibold text-slate-800 font-mono text-[11px] bg-slate-100 px-2 py-0.5 rounded">
+                            {order.attribution.session_pages || "—"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
