@@ -40,39 +40,4 @@ body {
   animation: sameDayBlink 1s infinite;
 }
 
-/* Custom modern scrollbars */
-.top-scrollbar::-webkit-scrollbar {
-  height: 6px;
-}
-.top-scrollbar::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 9999px;
-}
-.top-scrollbar::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-.top-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-.table-scrollbar::-webkit-scrollbar {
-  height: 8px;
-  width: 8px;
-}
-.table-scrollbar::-webkit-scrollbar-track {
-  background: #f8fafc;
-}
-.table-scrollbar::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-.table-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Custom styled range slider */
-input[type="range"].accent-slider {
-  accent-color: #E31E24;
-}
 

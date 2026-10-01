@@ -765,13 +765,13 @@ export default function OrdersPage() {
                 <div
                   ref={topScrollRef}
                   onScroll={handleTopScroll}
-                  className="overflow-x-auto overflow-y-hidden w-full bg-slate-50 border-b border-slate-200/80 h-2 block cursor-ew-resize top-scrollbar"
+                  className="overflow-x-auto overflow-y-hidden w-full bg-white border-b border-slate-200"
                   title="Horizontal Scrollbar"
                 >
                   <div style={{ width: `${tableScrollWidth}px`, height: "1px" }} />
                 </div>
 
-                <div ref={tableContainerRef} onScroll={handleTableScroll} className="overflow-x-auto relative min-h-[320px] flex-1 table-scrollbar">
+                <div ref={tableContainerRef} onScroll={handleTableScroll} className="overflow-x-auto relative min-h-[320px] flex-1">
                   {isLoading && (
                     <div className="absolute inset-0 bg-white/70 backdrop-blur-[2px] z-10 flex items-center justify-center">
                       <div className="flex items-center gap-2.5 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm">

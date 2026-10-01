@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/src/store/hooks";
 import { logout as logoutAction } from "@/src/store/authSlice";
+import { toggleSidebar, setSidebarOpen } from "@/src/store/uiSlice";
 import { getDefaultAllowedRoute } from "@/src/lib/permissions";
 
 interface HeaderProps {
@@ -15,6 +16,7 @@ export default function Header({ username, role }: HeaderProps) {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { admin, profile } = useAppSelector((state) => state.auth);
+  const sidebarOpen = useAppSelector((state) => state.ui?.sidebarOpen ?? true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const displayName = username || admin?.name || admin?.username || "Admin";
@@ -24,6 +26,16 @@ export default function Header({ username, role }: HeaderProps) {
     dispatch(logoutAction());
     router.push("/login");
   };
+
+  // Restore sidebar state from localStorage on client mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("gb_sidebar_open");
+      if (saved !== null) {
+        dispatch(setSidebarOpen(saved === "true"));
+      }
+    } catch {}
+  }, [dispatch]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -37,10 +49,34 @@ export default function Header({ username, role }: HeaderProps) {
   }, []);
 
   return (
-    <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between shrink-0 relative z-30 shadow-xs">
-      {/* Brand logo/name */}
-      <div className="flex items-center cursor-pointer" onClick={() => router.push(getDefaultAllowedRoute(profile))}>
-        <img src="/logo.svg" alt="GullyBaba Logo" className="h-8 w-auto object-contain" />
+    <header className="h-16 bg-white border-b border-gray-200 px-4 sm:px-6 flex items-center justify-between shrink-0 relative z-30 shadow-xs">
+      {/* Brand logo/name + Sidebar Toggle Button */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => dispatch(toggleSidebar())}
+          className="p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center border border-slate-200/80 shadow-2xs"
+          title={sidebarOpen ? "Close sidebar (Full width mode)" : "Open sidebar"}
+          aria-label="Toggle Sidebar"
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            {sidebarOpen ? (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            )}
+          </svg>
+        </button>
+
+        <div className="flex items-center cursor-pointer" onClick={() => router.push(getDefaultAllowedRoute(profile))}>
+          <img src="/logo.svg" alt="GullyBaba Logo" className="h-8 w-auto object-contain" />
+        </div>
       </div>
 
       {/* Right side Profile Avatar Dropdown */}

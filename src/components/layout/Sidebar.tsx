@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAppSelector } from "@/src/store/hooks";
+import { useAppDispatch, useAppSelector } from "@/src/store/hooks";
+import { toggleSidebar } from "@/src/store/uiSlice";
 import {
   hasOrdersAccess,
   hasAbandonedCartAccess,
@@ -11,7 +12,9 @@ import {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const dispatch = useAppDispatch();
   const profile = useAppSelector((state) => state.auth.profile);
+  const sidebarOpen = useAppSelector((state) => state.ui?.sidebarOpen ?? true);
 
   const models = [
     // { name: "Dashboard Overview", path: "/dashboard", icon: "M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" },
@@ -39,12 +42,27 @@ export default function Sidebar() {
     },
   ].filter((model) => model.isAllowed);
 
+  if (!sidebarOpen) {
+    return null;
+  }
+
   return (
     <aside className="w-60 bg-[#0f172a] border-r border-slate-800 flex flex-col shrink-0">
-      <div className="p-4 border-b border-slate-800 bg-[#1e293b]/20">
+      <div className="p-4 border-b border-slate-800 bg-[#1e293b]/20 flex items-center justify-between">
         <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block font-sans">
           Core Modules
         </span>
+        <button
+          type="button"
+          onClick={() => dispatch(toggleSidebar())}
+          className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+          title="Close sidebar (Full width mode)"
+          aria-label="Close sidebar"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+          </svg>
+        </button>
       </div>
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {models.map((model) => {

@@ -1000,23 +1000,23 @@ export default function OrderDetailPage() {
   const renderAddress = (addr: Address, withEmail: boolean) => {
     const name = [addr.first_name, addr.last_name].filter(Boolean).join(" ");
     return (
-      <div className="text-xs text-gray-700 font-sans leading-relaxed space-y-0.5">
-        {name && <div className="font-semibold text-gray-900">{name}</div>}
-        {addr.company && <div>{addr.company}</div>}
-        {addr.address_1 && <div>{addr.address_1}</div>}
-        {addr.address_2 && <div>{addr.address_2}</div>}
+      <div className="text-xs text-gray-700 font-sans leading-relaxed space-y-0.5 break-words">
+        {name && <div className="font-semibold text-gray-900 break-words">{name}</div>}
+        {addr.company && <div className="break-words">{addr.company}</div>}
+        {addr.address_1 && <div className="break-words">{addr.address_1}</div>}
+        {addr.address_2 && <div className="break-words">{addr.address_2}</div>}
         {(addr.city || addr.state || addr.postcode) && (
-          <div>{[addr.city, addr.state, addr.postcode].filter(Boolean).join(", ")}</div>
+          <div className="break-words">{[addr.city, addr.state, addr.postcode].filter(Boolean).join(", ")}</div>
         )}
         {addr.country && <div>{addr.country}</div>}
         {withEmail && addr.email && (
-          <div className="pt-1">
+          <div className="pt-1 break-all">
             <span className="text-gray-500">Email: </span>
-            <a href={`mailto:${addr.email}`} className="text-[#E31E24] hover:underline">{addr.email}</a>
+            <a href={`mailto:${addr.email}`} className="text-[#E31E24] hover:underline break-all">{addr.email}</a>
           </div>
         )}
         {addr.phone && (
-          <div>
+          <div className="break-all">
             <span className="text-gray-500">Phone: </span>
             <a href={`tel:${addr.phone}`} className="text-[#E31E24] hover:underline">{addr.phone}</a>
           </div>
@@ -1131,6 +1131,16 @@ export default function OrderDetailPage() {
   const itemsPaymentType = order?.line_items.find((li) => li.payment_type)?.payment_type || "";
   const paymentTypeDisplay = order?.payment_type || itemsPaymentType || getOrderMeta("Payment Type") || getOrderMeta("_awcdp_deposits_payment_type");
 
+  const isCodOrder = Boolean(
+    (order?.payment_method || "").toLowerCase() === "cod" ||
+    (order?.payment_method || "").toLowerCase().startsWith("cod") ||
+    /cash\s*on\s*delivery/i.test(order?.payment_method || "") ||
+    /cash\s*on\s*delivery/i.test(order?.payment_method_title || "") ||
+    /cash\s*on\s*delivery/i.test(String(paymentTypeDisplay || "")) ||
+    String(paymentTypeDisplay || "").toLowerCase() === "cod"
+  );
+  const isPrepaidOrder = Boolean(order && !isCodOrder);
+
   return (
     <div className="h-screen w-screen flex flex-col bg-slate-50/70 text-slate-900 font-sans overflow-hidden">
       <Header />
@@ -1224,14 +1234,14 @@ export default function OrderDetailPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-[1fr_310px] 2xl:grid-cols-[1fr_340px] gap-4 items-start">
                   {/* Left column */}
-                  <div className="lg:col-span-2 space-y-4">
+                  <div className="lg:col-span-2 xl:col-span-1 space-y-4 min-w-0">
                     {/* Order Details: General / Billing / Shipping */}
                     <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
-                      <div className="grid grid-cols-1 md:grid-cols-[1.6fr_1fr_1fr] divide-y md:divide-y-0 md:divide-x divide-slate-100">
+                      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-[1.3fr_1fr_1fr]">
                         {/* General */}
-                        <div className="p-5 space-y-3.5">
+                        <div className="p-5 space-y-3.5 md:col-span-2 2xl:col-span-1 min-w-0 border-b 2xl:border-b-0 2xl:border-r border-slate-100">
                           <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider font-sans border-b border-slate-100 pb-2.5">
                             <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -1239,95 +1249,99 @@ export default function OrderDetailPage() {
                             <span>General Information</span>
                           </div>
 
-                          <div>
-                            <div className="text-[10px] font-bold text-slate-400 uppercase font-sans mb-1">Date Created:</div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 font-sans font-medium">
-                                {new Date(order.date_created).toLocaleDateString("en-CA")}
-                              </div>
-                              <span className="text-[11px] text-slate-400 font-sans">@</span>
-                              <div className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-sans text-center font-medium">
-                                {new Date(order.date_created).toLocaleTimeString(undefined, { hour: "2-digit", hour12: false })}
-                              </div>
-                              <span className="text-[11px] text-slate-400 font-sans">:</span>
-                              <div className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-sans text-center font-medium">
-                                {new Date(order.date_created).toLocaleTimeString(undefined, { minute: "2-digit" }).replace(/.*:/, "")}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-1 gap-3.5">
+                            <div>
+                              <div className="text-[10px] font-bold text-slate-400 uppercase font-sans mb-1">Date Created:</div>
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 font-sans font-medium">
+                                  {new Date(order.date_created).toLocaleDateString("en-CA")}
+                                </div>
+                                <span className="text-[11px] text-slate-400 font-sans">@</span>
+                                <div className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-sans text-center font-medium">
+                                  {new Date(order.date_created).toLocaleTimeString(undefined, { hour: "2-digit", hour12: false })}
+                                </div>
+                                <span className="text-[11px] text-slate-400 font-sans">:</span>
+                                <div className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-sans text-center font-medium">
+                                  {new Date(order.date_created).toLocaleTimeString(undefined, { minute: "2-digit" }).replace(/.*:/, "")}
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <div>
-                            <div className="text-[10px] font-bold text-slate-400 uppercase font-sans mb-1">Status:</div>
-                            {canEditStatus ? (
-                              <select
-                                value={selectedStatus}
-                                onChange={(e) => setSelectedStatus(e.target.value)}
-                                className="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-sans outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] transition-all cursor-pointer font-medium"
-                              >
-                                {statusList.map((s) => (
-                                  <option key={s.value} value={s.value}>{s.label}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <div className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 font-sans font-medium">
-                                {statusList.find((s) => s.value === order.status)?.label || order.status}
+                            <div>
+                              <div className="text-[10px] font-bold text-slate-400 uppercase font-sans mb-1">Status:</div>
+                              {canEditStatus ? (
+                                <select
+                                  value={selectedStatus}
+                                  onChange={(e) => setSelectedStatus(e.target.value)}
+                                  className="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-sans outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] transition-all cursor-pointer font-medium"
+                                >
+                                  {statusList.map((s) => (
+                                    <option key={s.value} value={s.value}>{s.label}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <div className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 font-sans font-medium">
+                                  {statusList.find((s) => s.value === order.status)?.label || order.status}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="sm:col-span-2 2xl:col-span-1">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase font-sans">Customer:</span>
+                                <div className="text-[11px] font-sans flex items-center gap-2">
+                                  {canProfileLink && (
+                                    <a href={`/users/${order.customer_id}`} className="text-[#E31E24] hover:underline font-medium">Profile →</a>
+                                  )}
+                                  <a href={`/orders?customer=${order.customer_id}`} className="text-slate-500 hover:text-[#E31E24] font-medium">Other orders →</a>
+                                </div>
+                              </div>
+                              <div className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-sans font-medium flex items-center gap-2 min-w-0">
+                                <div className="w-6 h-6 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                  {(order.billing.first_name || "U")[0].toUpperCase()}
+                                </div>
+                                <span className="truncate">
+                                  {order.billing.first_name} {order.billing.last_name} (#{order.customer_id}{order.billing.email ? ` – ${order.billing.email}` : ""})
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className={`${canWeight && order.billing.phone ? "sm:col-span-1 2xl:col-span-1" : "sm:col-span-2 2xl:col-span-1"}`}>
+                              {canWeight ? (
+                                <div>
+                                  <div className="text-[10px] font-bold text-slate-400 uppercase font-sans mb-1">Weight (kg) :</div>
+                                  <input
+                                    type="text"
+                                    value={isLoadingWeight ? "Calculating…" : weight}
+                                    disabled={isLoadingWeight}
+                                    onChange={(e) => setWeight(e.target.value)}
+                                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-sans outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] disabled:bg-slate-50 disabled:text-slate-400 transition-all font-mono"
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {/* WhatsApp Customer Action */}
+                            {order.billing.phone && (
+                              <div className={`${canWeight ? "sm:col-span-1 2xl:col-span-1 flex flex-col justify-end" : "sm:col-span-2 2xl:col-span-1"}`}>
+                                <a
+                                  href={`https://wa.me/91${(order.billing.phone || "").replace(/\D/g, "")}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-full text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3.5 py-2 rounded-lg font-sans shadow-2xs inline-flex items-center justify-center gap-2 transition-all active:scale-95"
+                                >
+                                  <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
+                                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z" />
+                                  </svg>
+                                  <span>WhatsApp Customer</span>
+                                </a>
                               </div>
                             )}
                           </div>
-
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase font-sans">Customer:</span>
-                              <div className="text-[11px] font-sans flex items-center gap-2">
-                                {canProfileLink && (
-                                  <a href={`/users/${order.customer_id}`} className="text-[#E31E24] hover:underline font-medium">Profile →</a>
-                                )}
-                                <a href={`/orders?customer=${order.customer_id}`} className="text-slate-500 hover:text-[#E31E24] font-medium">Other orders →</a>
-                              </div>
-                            </div>
-                            <div className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-sans font-medium flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-[10px] font-bold shrink-0">
-                                {(order.billing.first_name || "U")[0].toUpperCase()}
-                              </div>
-                              <span className="truncate">
-                                {order.billing.first_name} {order.billing.last_name} (#{order.customer_id}{order.billing.email ? ` – ${order.billing.email}` : ""})
-                              </span>
-                            </div>
-                          </div>
-
-                          {canWeight && (
-                            <div>
-                              <div className="text-[10px] font-bold text-slate-400 uppercase font-sans mb-1">Weight (kg) :</div>
-                              <input
-                                type="text"
-                                value={isLoadingWeight ? "Calculating…" : weight}
-                                disabled={isLoadingWeight}
-                                onChange={(e) => setWeight(e.target.value)}
-                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-sans outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] disabled:bg-slate-50 disabled:text-slate-400 transition-all font-mono"
-                              />
-                            </div>
-                          )}
-
-                          {/* WhatsApp Customer Action */}
-                          {order.billing.phone && (
-                            <div className="pt-2">
-                              <a
-                                href={`https://wa.me/91${(order.billing.phone || "").replace(/\D/g, "")}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="w-full text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3.5 py-2 rounded-lg font-sans shadow-2xs inline-flex items-center justify-center gap-2 transition-all active:scale-95"
-                              >
-                                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                                  <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z" />
-                                </svg>
-                                <span>WhatsApp Customer</span>
-                              </a>
-                            </div>
-                          )}
                         </div>
 
                         {/* Billing */}
-                        <div className="p-5 space-y-3.5">
+                        <div className="p-5 space-y-3.5 md:col-span-1 2xl:col-span-1 min-w-0 border-b md:border-b-0 border-r-0 md:border-r border-slate-100">
                           <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                             <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider font-sans">
                               <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1341,7 +1355,7 @@ export default function OrderDetailPage() {
                                   if (!isEditingBilling) setBillingForm({ ...order.billing });
                                   setIsEditingBilling(!isEditingBilling);
                                 }}
-                                className="text-xs text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium transition-colors cursor-pointer"
+                                className="text-xs text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium transition-colors cursor-pointer shrink-0"
                                 title="Edit billing address"
                               >
                                 <PencilIcon />
@@ -1358,7 +1372,7 @@ export default function OrderDetailPage() {
                         </div>
 
                         {/* Shipping */}
-                        <div className="p-5 space-y-3.5">
+                        <div className="p-5 space-y-3.5 md:col-span-1 2xl:col-span-1 min-w-0">
                           <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                             <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider font-sans">
                               <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1372,7 +1386,7 @@ export default function OrderDetailPage() {
                                   if (!isEditingShipping) setShippingForm({ ...order.shipping });
                                   setIsEditingShipping(!isEditingShipping);
                                 }}
-                                className="text-xs text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium transition-colors cursor-pointer"
+                                className="text-xs text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium transition-colors cursor-pointer shrink-0"
                                 title="Edit shipping address"
                               >
                                 <PencilIcon />
@@ -1393,11 +1407,11 @@ export default function OrderDetailPage() {
                               <div className="text-[10px] font-bold text-slate-400 uppercase font-sans">Shipping Method</div>
                               {order.shipping_lines.map((s) => (
                                 <div key={s.id} className="text-xs font-sans text-slate-800 flex items-center justify-between bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-200/80">
-                                  <div className="flex items-center gap-1.5">
+                                  <div className="flex items-center gap-1.5 min-w-0">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-slate-500 shrink-0">
                                       <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.25V3.75A1.125 1.125 0 0013.125 2.625h-9.75A1.125 1.125 0 002.25 3.75v10.5" />
                                     </svg>
-                                    <span className="font-semibold text-slate-900">{s.method_title || "Shipping"}</span>
+                                    <span className="font-semibold text-slate-900 truncate">{s.method_title || "Shipping"}</span>
                                   </div>
                                 </div>
                               ))}
@@ -1407,7 +1421,7 @@ export default function OrderDetailPage() {
                           {order.customer_note && (
                             <div className="pt-2.5 border-t border-slate-100 text-xs font-sans">
                               <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Customer Note</div>
-                              <div className="text-slate-700 bg-amber-50/70 border border-amber-200/70 p-2.5 rounded-lg text-xs leading-relaxed italic">{order.customer_note}</div>
+                              <div className="text-slate-700 bg-amber-50/70 border border-amber-200/70 p-2.5 rounded-lg text-xs leading-relaxed italic break-words">{order.customer_note}</div>
                             </div>
                           )}
                         </div>
@@ -1979,7 +1993,7 @@ export default function OrderDetailPage() {
                                   </td>
                                   <td className="py-3.5 px-4 font-sans text-slate-700 text-right align-top text-xs">
                                     <div className="font-semibold text-slate-800">× {li.quantity}</div>
-                                    {isRefundMode && (
+                                    {isRefundMode && isPrepaidOrder && (
                                       <div className="mt-1.5 flex justify-end">
                                         <input
                                           type="number"
@@ -1994,7 +2008,7 @@ export default function OrderDetailPage() {
                                   </td>
                                   <td className="py-3.5 px-5 font-sans text-slate-900 font-bold text-right align-top text-xs">
                                     <div>{order.currency_symbol}{parseFloat(li.total).toFixed(2)}</div>
-                                    {isRefundMode && (
+                                    {isRefundMode && isPrepaidOrder && (
                                       <div className="mt-1.5 flex justify-end">
                                         <input
                                           type="number"
@@ -2060,29 +2074,33 @@ export default function OrderDetailPage() {
 
                       {/* Refund Area */}
                       {!isRefundMode ? (
-                        /* Normal view: Bottom bar with Refund button on the left and notice on the right */
+                        /* Normal view: Bottom bar with Refund button on the left (only when prepaid) and notice on the right */
                         <div className="border-t border-slate-100 px-5 py-3.5 flex items-center justify-between bg-slate-50/40">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsRefundMode(true);
-                              setRefundAmount("");
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-[#E31E24] bg-white hover:bg-red-50 border border-red-200 rounded-lg transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
-                          >
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                            </svg>
-                            Issue Refund
-                          </button>
+                          <div>
+                            {isPrepaidOrder && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsRefundMode(true);
+                                  setRefundAmount("");
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-[#E31E24] bg-white hover:bg-red-50 border border-red-200 rounded-lg transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
+                              >
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                                </svg>
+                                Issue Refund
+                              </button>
+                            )}
+                          </div>
 
-                          <div className="text-xs text-slate-400 font-sans flex items-center gap-1.5">
+                          <div className="text-xs text-slate-400 font-sans flex items-center gap-1.5 ml-auto">
                             <span className="w-4 h-4 rounded-full bg-slate-200/80 text-slate-500 inline-flex items-center justify-center text-[10px] font-bold">i</span>
                             <span>This order is completed and no longer directly editable.</span>
                           </div>
                         </div>
-                      ) : (
-                        /* Expanded Refund Panel */
+                      ) : isPrepaidOrder ? (
+                        /* Expanded Refund Panel (Only accessible for prepaid orders) */
                         <div className="border-t border-slate-200 bg-slate-50/70">
                           <div className="p-5 flex flex-col items-end gap-3">
                             <div className="w-full flex items-center justify-between pb-3 border-b border-slate-200/60 flex-wrap gap-2">
@@ -2176,7 +2194,7 @@ export default function OrderDetailPage() {
                             <span className="text-[11px] text-slate-400">Items quantities and totals entered above will be recorded in the order log</span>
                           </div>
                         </div>
-                      )}
+                      ) : null}
                     </div>
 
                     {/* Downloadable product permissions */}
@@ -2461,7 +2479,7 @@ export default function OrderDetailPage() {
                   </div>
 
                   {/* Right column */}
-                  <div className="space-y-4">
+                  <div className="space-y-4 min-w-0">
                     {/* Order actions */}
                     <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
                       <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
