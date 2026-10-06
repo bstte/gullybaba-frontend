@@ -28,6 +28,14 @@ export const WC_ABANDONED_CART_KEY = "abandoned-carts";
 export const CONTACT_FORM_META_KEY = "access_contact_form";
 export const CONTACT_FORM_KEY = "cfdb7-list.php";
 
+// Downloads section keys
+export const DOWNLOADS_META_KEY = "access_downloads";
+export const DOWNLOADS_MENU_KEY = "downloads-menu";
+export const DOWNLOADS_COD_ORDERS_KEY = "downloads-cod-orders";
+export const DOWNLOADS_ABANDONED_CARTS_KEY = "downloads-abandoned-carts";
+export const DOWNLOADS_ABANDONED_CARTS_LITE_KEY = "downloads-abandoned-carts-lite";
+export const DOWNLOADS_ORDERS_KEY = "downloads-orders";
+
 export function getMetaValue(profile: CustomerProfile | null | undefined, key: string): string[] {
   const entry = profile?.meta_data?.find((m) => m.key === key);
   if (!entry || !entry.value) return [];
@@ -80,11 +88,27 @@ export function hasContactFormAccess(profile: CustomerProfile | null | undefined
   return values.includes(CONTACT_FORM_KEY);
 }
 
+// Downloads: access_downloads meta key check karta hai
+export function hasDownloadsFlag(profile: CustomerProfile | null | undefined, flag: string): boolean {
+  if (isAdministrator(profile)) return true;
+  const values = getMetaValue(profile, DOWNLOADS_META_KEY);
+  return values.includes(flag);
+}
+
+export function hasDownloadsAccess(profile: CustomerProfile | null | undefined): boolean {
+  return hasDownloadsFlag(profile, DOWNLOADS_MENU_KEY);
+}
+
+export function canViewDownloadTab(profile: CustomerProfile | null | undefined, tabKey: string): boolean {
+  return hasDownloadsFlag(profile, tabKey);
+}
+
 // Login ke baad ya default navigation me pehle allowed section par bhejta hai:
 // 1. Agar orders allow hai to /orders
 // 2. Agar abandoned cart allow hai to /abandoned-carts
 // 3. Agar wc abandoned cart allow hai to /wc-abandoned-carts
 // 4. Agar contact forms allow hai to /contact-forms
+// 5. Agar downloads allow hai to /downloads
 export function getDefaultAllowedRoute(profile: CustomerProfile | null | undefined): string {
   if (hasOrdersAccess(profile)) {
     return "/orders";
@@ -97,6 +121,9 @@ export function getDefaultAllowedRoute(profile: CustomerProfile | null | undefin
   }
   if (hasContactFormAccess(profile)) {
     return "/contact-forms";
+  }
+  if (hasDownloadsAccess(profile)) {
+    return "/downloads";
   }
   return "/orders";
 }

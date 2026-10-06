@@ -689,3 +689,28 @@ export async function deleteContactFormSubmission(
   return handleResponse(response, "Failed to delete submission");
 }
 
+export async function fetchDownloads(
+  token: string,
+  type: string = "cod-orders",
+  search: string = ""
+) {
+  const queryParams = new URLSearchParams({
+    type,
+    ...(search ? { search } : {}),
+  });
+
+  const response = await fetch(`${API_URL}/api/downloads?${queryParams.toString()}`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to fetch downloads list");
+}
+
+export function getBackendDownloadUrl(token: string, filename: string, type: string = "cod-orders"): string {
+  return `${API_URL}/api/downloads/file?file=${encodeURIComponent(filename)}&type=${encodeURIComponent(type)}&token=${encodeURIComponent(token)}`;
+}
+
