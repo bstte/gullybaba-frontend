@@ -592,3 +592,100 @@ export async function updateWcAbandonedCartNote(token: string, id: number | stri
   return handleResponse(response, "Failed to update WooCommerce abandoned cart note");
 }
 
+export async function fetchContactForms(token: string) {
+  const response = await fetch(`${API_URL}/api/contact-forms`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return handleResponse(response, "Failed to fetch contact forms");
+}
+
+export async function fetchContactFormSubmissions(
+  token: string,
+  formId: string | number,
+  page: number = 1,
+  limit: number = 20,
+  search: string = "",
+  status: string = "all"
+) {
+  const queryParams = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+    search,
+    status,
+  });
+
+  const response = await fetch(
+    `${API_URL}/api/contact-forms/${formId}/submissions?${queryParams.toString()}`,
+    {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  return handleResponse(response, "Failed to fetch form submissions");
+}
+
+export async function fetchContactFormSubmissionDetail(
+  token: string,
+  submissionId: string | number
+) {
+  const response = await fetch(
+    `${API_URL}/api/contact-forms/submissions/${submissionId}`,
+    {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  return handleResponse(response, "Failed to fetch submission details");
+}
+
+export async function updateContactFormSubmissionStatus(
+  token: string,
+  submissionId: string | number,
+  status: "read" | "unread"
+) {
+  const response = await fetch(
+    `${API_URL}/api/contact-forms/submissions/${submissionId}/status`,
+    {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status }),
+    }
+  );
+
+  return handleResponse(response, "Failed to update submission status");
+}
+
+export async function deleteContactFormSubmission(
+  token: string,
+  submissionId: string | number
+) {
+  const response = await fetch(
+    `${API_URL}/api/contact-forms/submissions/${submissionId}`,
+    {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  return handleResponse(response, "Failed to delete submission");
+}
+

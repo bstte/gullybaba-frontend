@@ -31,11 +31,25 @@ interface Order {
     last_name: string;
     email: string;
     phone: string;
+    address_1?: string;
+    address_2?: string;
+    city?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+    company?: string;
   };
   shipping: {
     first_name: string;
     last_name: string;
     phone: string;
+    address_1?: string;
+    address_2?: string;
+    city?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+    company?: string;
   };
   payment_method: string;
   payment_method_title: string;
@@ -54,6 +68,44 @@ interface Order {
   is_same_day_delivery?: boolean;
 }
 
+export const AVAILABLE_COLUMNS = [
+  { id: "order", label: "Order" },
+  { id: "date", label: "Date" },
+  { id: "status", label: "Status" },
+  { id: "billing", label: "Billing" },
+  { id: "ship_to", label: "Ship to" },
+  { id: "total", label: "Total" },
+  { id: "actions", label: "Actions" },
+  { id: "category", label: "Category" },
+  { id: "mobile", label: "Mobile" },
+  { id: "email", label: "Email" },
+  { id: "updated_by", label: "Updated by" },
+  { id: "delivered_by", label: "Delivered by" },
+  { id: "status_change", label: "Status Change" },
+  { id: "origin", label: "Origin" },
+] as const;
+
+export type ColumnId = (typeof AVAILABLE_COLUMNS)[number]["id"];
+
+export const DEFAULT_VISIBLE_COLUMNS: Record<ColumnId, boolean> = {
+  order: true,
+  date: true,
+  status: true,
+  billing: false,
+  ship_to: false,
+  total: true,
+  actions: false,
+  category: true,
+  mobile: true,
+  email: true,
+  updated_by: true,
+  delivered_by: true,
+  status_change: true,
+  origin: false,
+};
+
+const SCREEN_OPTIONS_STORAGE_KEY = "gullybaba_order_screen_options";
+
 export default function OrdersPage() {
   const { token, ready, profile } = useAuthGuard();
   const router = useRouter();
@@ -66,6 +118,16 @@ export default function OrdersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
+
+  // Screen Options state
+  const [isScreenOptionsOpen, setIsScreenOptionsOpen] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<Record<ColumnId, boolean>>(DEFAULT_VISIBLE_COLUMNS);
+  const [tempColumns, setTempColumns] = useState<Record<ColumnId, boolean>>(DEFAULT_VISIBLE_COLUMNS);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(10);
+  const [tempItemsPerPage, setTempItemsPerPage] = useState<string>("10");
+
+  // Selected orders checkbox selection
+  const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
 
   // Filter values
   const [searchQuery, setSearchQuery] = useState("");
@@ -94,12 +156,100 @@ export default function OrdersPage() {
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [totalOrdersCount, setTotalOrdersCount] = useState(0);
 
-  const limit = 20;
-
   // Table horizontal scroll (top synchronized scrollbar)
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
   const [tableScrollWidth, setTableScrollWidth] = useState(1400);
+
+  // Load Screen Options from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SCREEN_OPTIONS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.columns && typeof parsed.columns === "object") {
+          const mergedCols = { ...DEFAULT_VISIBLE_COLUMNS, ...parsed.columns };
+          setVisibleColumns(mergedCols);
+          setTempColumns(mergedCols);
+        }
+        if (parsed.itemsPerPage && typeof parsed.itemsPerPage === "number") {
+          setItemsPerPage(parsed.itemsPerPage);
+          setTempItemsPerPage(parsed.itemsPerPage.toString());
+        }
+      }
+    } catch {
+      // Ignore localStorage error
+    }
+  }, []);
+
+  const toggleScreenOptions = () => {
+    setIsScreenOptionsOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setTempColumns(visibleColumns);
+        setTempItemsPerPage(itemsPerPage.toString());
+      }
+      return next;
+    });
+  };
+
+  const handleApplyScreenOptions = () => {
+    const updatedCols = { ...tempColumns };
+    const hasAnyVisible = Object.values(updatedCols).some(Boolean);
+    if (!hasAnyVisible) {
+      updatedCols.order = true;
+    }
+
+    const parsedLimit = Math.max(1, Math.min(100, parseInt(tempItemsPerPage, 10) || 10));
+
+    setVisibleColumns(updatedCols);
+    setItemsPerPage(parsedLimit);
+    setTempItemsPerPage(parsedLimit.toString());
+
+    try {
+      localStorage.setItem(
+        SCREEN_OPTIONS_STORAGE_KEY,
+        JSON.stringify({
+          columns: updatedCols,
+          itemsPerPage: parsedLimit,
+        })
+      );
+    } catch {
+      // Ignore localStorage error
+    }
+
+    setCurrentPage(1);
+    if (token) {
+      loadData(
+        token,
+        1,
+        selectedStatus,
+        searchQuery,
+        startDate,
+        endDate,
+        selectedCategories.join(","),
+        appliedPaymentMethod,
+        appliedDemandType,
+        false,
+        parsedLimit
+      );
+    }
+    showNotification("Screen options applied successfully", "success");
+  };
+
+  const handleSelectAllOrders = () => {
+    if (orders.length > 0 && selectedOrderIds.length === orders.length) {
+      setSelectedOrderIds([]);
+    } else {
+      setSelectedOrderIds(orders.map((o) => o.id));
+    }
+  };
+
+  const handleToggleSelectOrder = (id: number) => {
+    setSelectedOrderIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
 
   useEffect(() => {
     const updateMetrics = () => {
@@ -121,7 +271,7 @@ export default function OrdersPage() {
       window.removeEventListener("resize", updateMetrics);
       if (ro) ro.disconnect();
     };
-  }, [orders]);
+  }, [orders, visibleColumns]);
 
   const handleTableScroll = () => {
     if (tableContainerRef.current && topScrollRef.current) {
@@ -164,14 +314,15 @@ export default function OrdersPage() {
     catQ: string,
     payM: string = appliedPaymentMethod,
     demandVal: string = appliedDemandType,
-    silent: boolean = false
+    silent: boolean = false,
+    perPageLimit: number = itemsPerPage
   ) => {
     try {
       if (!silent) setIsLoading(true);
       const res = await fetchOrders(
         token,
         pageNum,
-        limit,
+        perPageLimit,
         searchVal,
         statusVal,
         startD,
@@ -182,6 +333,7 @@ export default function OrdersPage() {
       );
       if (res.success) {
         setOrders(res.orders);
+        setSelectedOrderIds([]);
         setTotalPages(res.pagination.totalPages || 1);
         setTotalItems(res.pagination.total || 0);
 
@@ -209,9 +361,9 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!ready || !token) return;
     if (profile && !hasOrdersAccess(profile)) return;
-    loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), appliedPaymentMethod, appliedDemandType);
+    loadData(token, currentPage, selectedStatus, searchQuery, startDate, endDate, selectedCategories.join(","), appliedPaymentMethod, appliedDemandType, false, itemsPerPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, token, profile, currentPage, selectedStatus, appliedPaymentMethod, appliedDemandType]);
+  }, [ready, token, profile, currentPage, selectedStatus, appliedPaymentMethod, appliedDemandType, itemsPerPage]);
 
   useEffect(() => {
     if (!ready || !token) return;
@@ -451,6 +603,8 @@ export default function OrdersPage() {
     ...(trashTab ? [trashTab] : []),
   ];
 
+  const visibleColCount = AVAILABLE_COLUMNS.filter((c) => visibleColumns[c.id]).length;
+
   return (
     <div className="h-screen w-screen flex flex-col bg-slate-50/70 text-slate-900 font-sans overflow-hidden">
       {/* Top Header */}
@@ -489,12 +643,91 @@ export default function OrdersPage() {
                 <p className="text-[11px] text-slate-500 font-medium">Track, manage and process customer orders</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <span className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200/60 font-mono">
                 Total: <strong className="text-slate-800">{totalOrdersCount.toLocaleString("en-IN")}</strong>
               </span>
+              <button
+                type="button"
+                onClick={toggleScreenOptions}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer font-sans select-none ${
+                  isScreenOptionsOpen
+                    ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                    : "bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border-slate-300 shadow-2xs"
+                }`}
+                title="Toggle Screen Options"
+              >
+                <span>Screen Options</span>
+                <span className="text-[9px]">{isScreenOptionsOpen ? "▲" : "▼"}</span>
+              </button>
             </div>
           </div>
+
+          {/* Screen Options Collapsible Drawer */}
+          {isScreenOptionsOpen && (
+            <div className="bg-white border-b border-slate-200 shadow-xs px-6 py-4 shrink-0 z-20 transition-all">
+              <div className="max-w-6xl">
+                <h3 className="text-sm font-bold text-slate-900 mb-2.5 font-sans">Orders</h3>
+
+                {/* Columns Selection */}
+                <div className="mb-4">
+                  <h4 className="text-xs font-bold text-slate-800 mb-2 font-sans">Columns</h4>
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                    {AVAILABLE_COLUMNS.map((col) => (
+                      <label
+                        key={col.id}
+                        className="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none hover:text-slate-900 font-sans"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={Boolean(tempColumns[col.id])}
+                          onChange={(e) => {
+                            setTempColumns((prev) => ({
+                              ...prev,
+                              [col.id]: e.target.checked,
+                            }));
+                          }}
+                          className="w-3.5 h-3.5 rounded border-slate-300 text-[#E31E24] focus:ring-red-500 accent-[#E31E24] cursor-pointer"
+                        />
+                        <span className="font-medium">{col.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Pagination Selection */}
+                <div className="mb-4 pt-3 border-t border-slate-100">
+                  <h4 className="text-xs font-bold text-slate-800 mb-1.5 font-sans">Pagination</h4>
+                  <div className="flex items-center gap-2 text-xs text-slate-700 font-sans">
+                    <label htmlFor="screen-options-items-per-page" className="font-medium">
+                      Number of items per page:
+                    </label>
+                    <input
+                      id="screen-options-items-per-page"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={tempItemsPerPage}
+                      onChange={(e) => setTempItemsPerPage(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleApplyScreenOptions()}
+                      className="w-16 px-2.5 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-red-500 font-mono shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Apply Button */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleApplyScreenOptions}
+                    className="px-4 py-1.5 bg-[#E31E24] hover:bg-red-700 text-white text-xs font-semibold rounded shadow-xs transition-colors cursor-pointer font-sans"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Scrollable Container */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col">
@@ -787,21 +1020,78 @@ export default function OrdersPage() {
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-slate-50/95 sticky top-0 z-10 border-b border-slate-200/80 text-slate-500 font-semibold text-[11px] uppercase tracking-wider backdrop-blur-xs">
-                        <th className="py-3 px-4 font-bold min-w-[200px]">Order & Customer</th>
-                        <th className="py-3 px-4 font-bold whitespace-nowrap">Status</th>
-                        <th className="py-3 px-4 font-bold whitespace-nowrap">Total</th>
-                        <th className="py-3 px-4 font-bold min-w-[180px]">Category</th>
-                        <th className="py-3 px-4 font-bold min-w-[180px]">Contact</th>
-                        <th className="py-3 px-4 font-bold w-[130px] whitespace-nowrap">Status Change</th>
-                        <th className="py-3 px-4 font-bold whitespace-nowrap">Delivered By</th>
-                        <th className="py-3 px-4 font-bold min-w-[160px]">Updated By</th>
-                        <th className="py-3 px-4 font-bold whitespace-nowrap text-right w-[90px] pr-6">Origin</th>
+                        {visibleColumns.order && (
+                          <th className="py-3 px-4 font-bold min-w-[200px]">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={orders.length > 0 && selectedOrderIds.length === orders.length}
+                                onChange={handleSelectAllOrders}
+                                className="w-3.5 h-3.5 rounded border-slate-300 text-[#E31E24] focus:ring-red-500 accent-[#E31E24] cursor-pointer"
+                                title="Select all orders"
+                              />
+                              <span className="inline-flex items-center gap-1">
+                                <span>Order</span>
+                                <span className="text-slate-400 text-[10px]">⬍</span>
+                              </span>
+                            </div>
+                          </th>
+                        )}
+                        {visibleColumns.date && (
+                          <th className="py-3 px-4 font-bold whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1">
+                              <span>Date</span>
+                              <span className="text-slate-400 text-[10px]">⬍</span>
+                            </span>
+                          </th>
+                        )}
+                        {visibleColumns.status && (
+                          <th className="py-3 px-4 font-bold whitespace-nowrap">Status</th>
+                        )}
+                        {visibleColumns.billing && (
+                          <th className="py-3 px-4 font-bold min-w-[180px]">Billing</th>
+                        )}
+                        {visibleColumns.ship_to && (
+                          <th className="py-3 px-4 font-bold min-w-[180px]">Ship to</th>
+                        )}
+                        {visibleColumns.total && (
+                          <th className="py-3 px-4 font-bold whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1">
+                              <span>Total</span>
+                              <span className="text-slate-400 text-[10px]">⬍</span>
+                            </span>
+                          </th>
+                        )}
+                        {visibleColumns.actions && (
+                          <th className="py-3 px-4 font-bold whitespace-nowrap text-center">Actions</th>
+                        )}
+                        {visibleColumns.category && (
+                          <th className="py-3 px-4 font-bold min-w-[180px]">Category</th>
+                        )}
+                        {visibleColumns.mobile && (
+                          <th className="py-3 px-4 font-bold whitespace-nowrap">Mobile</th>
+                        )}
+                        {visibleColumns.email && (
+                          <th className="py-3 px-4 font-bold min-w-[180px]">Email</th>
+                        )}
+                        {visibleColumns.updated_by && (
+                          <th className="py-3 px-4 font-bold min-w-[160px]">Updated By</th>
+                        )}
+                        {visibleColumns.delivered_by && (
+                          <th className="py-3 px-4 font-bold whitespace-nowrap">Delivered By</th>
+                        )}
+                        {visibleColumns.status_change && (
+                          <th className="py-3 px-4 font-bold w-[130px] whitespace-nowrap">Status Change</th>
+                        )}
+                        {visibleColumns.origin && (
+                          <th className="py-3 px-4 font-bold whitespace-nowrap text-right w-[90px] pr-6">Origin</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {orders.length === 0 ? (
                         <tr>
-                          <td colSpan={9} className="py-16 text-center text-slate-400">
+                          <td colSpan={visibleColCount || 1} className="py-16 text-center text-slate-400">
                             <div className="flex flex-col items-center gap-2.5">
                               <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
@@ -827,119 +1117,248 @@ export default function OrdersPage() {
                               onClick={() => router.push(`/orders/${order.id}`)}
                               className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
                             >
-                              <td className="py-3 px-4 font-sans min-w-[200px]">
-                                <div className="flex flex-col items-start gap-0.5">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="text-[#E31E24] font-bold group-hover:underline">
-                                      #{order.id}
-                                    </span>
-                                    <span className="text-slate-800 font-semibold">
-                                      {order.billing.first_name} {order.billing.last_name}
-                                    </span>
-                                  </div>
-                                  {isSameDay && (
-                                    <div className="mt-1">
-                                      <span
-                                        style={{ animation: "sameDayBlink 1s infinite" }}
-                                        className="animate-same-day-blink inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold font-sans bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-2xs"
-                                      >
-                                        <span className="text-amber-500 text-[10px] leading-none">⚡</span>
-                                        <span>Same Day Delivery</span>
-                                      </span>
+                              {/* 1. Order */}
+                              {visibleColumns.order && (
+                                <td className="py-3 px-4 font-sans min-w-[200px]">
+                                  <div className="flex items-start gap-2.5">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedOrderIds.includes(order.id)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={() => handleToggleSelectOrder(order.id)}
+                                      className="w-3.5 h-3.5 mt-0.5 rounded border-slate-300 text-[#E31E24] focus:ring-red-500 accent-[#E31E24] cursor-pointer"
+                                    />
+                                    <div className="flex flex-col items-start gap-0.5">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-[#E31E24] font-bold group-hover:underline">
+                                          #{order.id}
+                                        </span>
+                                        <span className="text-slate-800 font-semibold">
+                                          {order.billing?.first_name} {order.billing?.last_name}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            router.push(`/orders/${order.id}`);
+                                          }}
+                                          title="View Order"
+                                          className="text-slate-400 hover:text-slate-700 transition-colors p-0.5 cursor-pointer"
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                      {isSameDay && (
+                                        <div className="mt-1">
+                                          <span
+                                            style={{ animation: "sameDayBlink 1s infinite" }}
+                                            className="animate-same-day-blink inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold font-sans bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-2xs"
+                                          >
+                                            <span className="text-amber-500 text-[10px] leading-none">⚡</span>
+                                            <span>Same Day Delivery</span>
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="py-3 px-4 whitespace-nowrap">
-                                <div className="flex flex-col items-start gap-1">
+                                  </div>
+                                </td>
+                              )}
+
+                              {/* 2. Date */}
+                              {visibleColumns.date && (
+                                <td className="py-3 px-4 whitespace-nowrap text-slate-600 font-sans text-xs">
+                                  {order.date_created ? new Date(order.date_created).toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric"
+                                  }) : "—"}
+                                </td>
+                              )}
+
+                              {/* 3. Status */}
+                              {visibleColumns.status && (
+                                <td className="py-3 px-4 whitespace-nowrap">
                                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border font-sans uppercase tracking-wide ${badge.cls}`}>
                                     <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`}></span>
                                     <span>{order.status}</span>
                                   </span>
-                                  <span className="text-[11px] text-slate-500 font-sans whitespace-nowrap">
-                                    {order.date_created ? new Date(order.date_created).toLocaleDateString("en-GB", {
-                                      day: "numeric",
-                                      month: "short",
-                                      year: "numeric"
-                                    }) : "—"}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="py-3 px-4 text-slate-900 font-bold font-mono text-xs whitespace-nowrap">
-                                ₹{parseFloat(order.total).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className="py-3 px-4 text-slate-600 font-sans min-w-[180px] break-words whitespace-normal leading-snug">
-                                {order.categories || "—"}
-                              </td>
-                              <td className="py-3 px-4 font-sans min-w-[180px]">
-                                <div className="flex flex-col items-start gap-0.5">
-                                  <span className="text-slate-800 font-mono text-xs font-medium">{order.billing.phone || "—"}</span>
-                                  <span className="text-slate-400 text-[11px] lowercase break-all">{order.billing.email || "—"}</span>
-                                </div>
-                              </td>
-                              <td className="py-3 px-4 w-[130px]" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex flex-col items-stretch gap-1 w-[120px]">
-                                  <select
-                                    value={rowStatusActions[order.id] || order.status}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      setRowStatusActions(prev => ({ ...prev, [order.id]: val }));
-                                    }}
-                                    className="w-full bg-slate-50 hover:bg-white border border-slate-200 rounded-md px-2 py-1 text-[11px] text-slate-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
-                                  >
-                                    {statusList.map((s) => (
-                                      <option key={s.value} value={s.value}>{s.label}</option>
-                                    ))}
-                                  </select>
-                                  <button
-                                    onClick={() => handleStatusChangeSubmit(order.id)}
-                                    disabled={isUpdatingStatus[order.id]}
-                                    className="w-full text-[11px] font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 py-1 rounded-md transition-colors font-sans whitespace-nowrap shadow-2xs text-center flex items-center justify-center gap-1 cursor-pointer"
-                                  >
-                                    {isUpdatingStatus[order.id] ? (
+                                </td>
+                              )}
+
+                              {/* 4. Billing */}
+                              {visibleColumns.billing && (
+                                <td className="py-3 px-4 font-sans text-xs text-slate-600 min-w-[180px]">
+                                  <div className="flex flex-col gap-0.5 leading-snug">
+                                    <span className="font-semibold text-slate-800">
+                                      {order.billing?.first_name} {order.billing?.last_name}
+                                    </span>
+                                    {order.billing?.address_1 && (
+                                      <span>{order.billing.address_1}{order.billing.address_2 ? `, ${order.billing.address_2}` : ""}</span>
+                                    )}
+                                    {(order.billing?.city || order.billing?.state || order.billing?.postcode) && (
+                                      <span className="text-[11px] text-slate-500">
+                                        {[order.billing?.city, order.billing?.state, order.billing?.postcode].filter(Boolean).join(", ")}
+                                      </span>
+                                    )}
+                                    {!order.billing?.address_1 && !order.billing?.city && <span className="text-slate-400">—</span>}
+                                  </div>
+                                </td>
+                              )}
+
+                              {/* 5. Ship to */}
+                              {visibleColumns.ship_to && (
+                                <td className="py-3 px-4 font-sans text-xs text-slate-600 min-w-[180px]">
+                                  <div className="flex flex-col gap-0.5 leading-snug">
+                                    {(order.shipping?.first_name || order.shipping?.last_name || order.shipping?.address_1) ? (
                                       <>
-                                        <svg className="animate-spin h-3 w-3 text-white" fill="none" viewBox="0 0 24 24">
-                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                        </svg>
-                                        <span>Saving...</span>
+                                        <span className="font-semibold text-slate-800">
+                                          {order.shipping.first_name} {order.shipping.last_name}
+                                        </span>
+                                        {order.shipping.address_1 && (
+                                          <span>{order.shipping.address_1}{order.shipping.address_2 ? `, ${order.shipping.address_2}` : ""}</span>
+                                        )}
+                                        {(order.shipping?.city || order.shipping?.state || order.shipping?.postcode) && (
+                                          <span className="text-[11px] text-slate-500">
+                                            {[order.shipping?.city, order.shipping?.state, order.shipping?.postcode].filter(Boolean).join(", ")}
+                                          </span>
+                                        )}
                                       </>
                                     ) : (
-                                      "Change"
+                                      <span className="text-slate-400 text-[11px] italic">Same as billing</span>
                                     )}
-                                  </button>
-                                </div>
-                              </td>
-                              <td className="py-3 px-4 font-sans whitespace-nowrap">
-                                {order.delivered_by ? (
-                                  <span
-                                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border font-sans uppercase tracking-wide ${
-                                      order.delivered_by === "Shiprocket"
-                                        ? "bg-purple-50 text-purple-700 border-purple-200/80"
-                                        : order.delivered_by === "TekiPost"
-                                        ? "bg-blue-50 text-blue-700 border-blue-200/80"
-                                        : order.delivered_by === "DTDC"
-                                        ? "bg-red-50 text-red-700 border-red-200/80"
-                                        : "bg-slate-100 text-slate-700 border-slate-200"
-                                    }`}
-                                  >
-                                    {order.delivered_by}
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-300">—</span>
-                                )}
-                              </td>
-                              <td className="py-3 px-4 font-sans min-w-[160px]">
-                                {order.display_name || order.updated_by ? (
-                                  <span className="inline-flex items-center gap-1.5 font-medium text-slate-700">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                    {order.display_name || order.updated_by}
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-300">—</span>
-                                )}
-                              </td>
-                              <td className="py-3 px-4 text-slate-500 font-sans whitespace-nowrap text-right w-[90px] pr-6">{order.origin || "—"}</td>
+                                  </div>
+                                </td>
+                              )}
+
+                              {/* 6. Total */}
+                              {visibleColumns.total && (
+                                <td className="py-3 px-4 text-slate-900 font-bold font-mono text-xs whitespace-nowrap">
+                                  ₹{parseFloat(order.total).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                </td>
+                              )}
+
+                              {/* 7. Actions */}
+                              {visibleColumns.actions && (
+                                <td className="py-3 px-4 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => router.push(`/orders/${order.id}`)}
+                                      title="View Order Details"
+                                      className="px-2.5 py-1 text-slate-700 hover:text-white bg-slate-100 hover:bg-slate-900 rounded-md text-[11px] font-semibold transition-colors font-sans cursor-pointer flex items-center gap-1"
+                                    >
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      </svg>
+                                      <span>View</span>
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+
+                              {/* 8. Category */}
+                              {visibleColumns.category && (
+                                <td className="py-3 px-4 text-slate-600 font-sans min-w-[180px] break-words whitespace-normal leading-snug">
+                                  {order.categories || "—"}
+                                </td>
+                              )}
+
+                              {/* 9. Mobile */}
+                              {visibleColumns.mobile && (
+                                <td className="py-3 px-4 font-sans text-slate-800 font-mono text-xs whitespace-nowrap">
+                                  {order.billing?.phone || "—"}
+                                </td>
+                              )}
+
+                              {/* 10. Email */}
+                              {visibleColumns.email && (
+                                <td className="py-3 px-4 font-sans text-slate-600 text-xs min-w-[180px] lowercase break-all">
+                                  {order.billing?.email || "—"}
+                                </td>
+                              )}
+
+                              {/* 11. Updated by */}
+                              {visibleColumns.updated_by && (
+                                <td className="py-3 px-4 font-sans min-w-[160px]">
+                                  {order.display_name || order.updated_by ? (
+                                    <span className="inline-flex items-center gap-1.5 font-medium text-slate-700 text-xs">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                      {order.display_name || order.updated_by}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300">—</span>
+                                  )}
+                                </td>
+                              )}
+
+                              {/* 12. Delivered by */}
+                              {visibleColumns.delivered_by && (
+                                <td className="py-3 px-4 font-sans whitespace-nowrap">
+                                  {order.delivered_by ? (
+                                    <span
+                                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border font-sans uppercase tracking-wide ${
+                                        order.delivered_by === "Shiprocket"
+                                          ? "bg-purple-50 text-purple-700 border-purple-200/80"
+                                          : order.delivered_by === "TekiPost"
+                                          ? "bg-blue-50 text-blue-700 border-blue-200/80"
+                                          : order.delivered_by === "DTDC"
+                                          ? "bg-red-50 text-red-700 border-red-200/80"
+                                          : "bg-slate-100 text-slate-700 border-slate-200"
+                                      }`}
+                                    >
+                                      {order.delivered_by}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300">—</span>
+                                  )}
+                                </td>
+                              )}
+
+                              {/* 13. Status Change */}
+                              {visibleColumns.status_change && (
+                                <td className="py-3 px-4 w-[130px]" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex flex-col items-stretch gap-1 w-[120px]">
+                                    <select
+                                      value={rowStatusActions[order.id] || order.status}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setRowStatusActions(prev => ({ ...prev, [order.id]: val }));
+                                      }}
+                                      className="w-full bg-slate-50 hover:bg-white border border-slate-200 rounded-md px-2 py-1 text-[11px] text-slate-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
+                                    >
+                                      {statusList.map((s) => (
+                                        <option key={s.value} value={s.value}>{s.label}</option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      onClick={() => handleStatusChangeSubmit(order.id)}
+                                      disabled={isUpdatingStatus[order.id]}
+                                      className="w-full text-[11px] font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 py-1 rounded-md transition-colors font-sans whitespace-nowrap shadow-2xs text-center flex items-center justify-center gap-1 cursor-pointer"
+                                    >
+                                      {isUpdatingStatus[order.id] ? (
+                                        <>
+                                          <svg className="animate-spin h-3 w-3 text-white" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                          </svg>
+                                          <span>Saving...</span>
+                                        </>
+                                      ) : (
+                                        "Change"
+                                      )}
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+
+                              {/* 14. Origin */}
+                              {visibleColumns.origin && (
+                                <td className="py-3 px-4 text-slate-500 font-sans whitespace-nowrap text-right w-[90px] pr-6">{order.origin || "—"}</td>
+                              )}
                             </tr>
                           );
                         })

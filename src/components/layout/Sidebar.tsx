@@ -8,6 +8,7 @@ import {
   hasOrdersAccess,
   hasAbandonedCartAccess,
   hasWcAbandonedCartAccess,
+  hasContactFormAccess,
 } from "@/src/lib/permissions";
 
 export default function Sidebar() {
@@ -40,6 +41,12 @@ export default function Sidebar() {
       icon: "M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.116 60.116 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12 8.25v3.75l2.25 1.5",
       isAllowed: hasWcAbandonedCartAccess(profile),
     },
+    {
+      name: "Contact Forms",
+      path: "/contact-forms",
+      icon: "M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z",
+      isAllowed: hasContactFormAccess(profile),
+    },
   ].filter((model) => model.isAllowed);
 
   if (!sidebarOpen) {
@@ -66,7 +73,7 @@ export default function Sidebar() {
       </div>
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {models.map((model) => {
-          const isActive = pathname === model.path;
+          const isActive = pathname === model.path || (model.path !== "/" && pathname.startsWith(model.path + "/"));
           return (
             <Link
               key={model.name}

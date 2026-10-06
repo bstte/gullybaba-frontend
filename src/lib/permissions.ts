@@ -24,6 +24,10 @@ export const ABANDONED_CART_KEY = "abandoned_cart";
 export const WC_ABANDONED_CART_META_KEY = "access_abandoned_cart";
 export const WC_ABANDONED_CART_KEY = "abandoned-carts";
 
+// Contact Forms section keys
+export const CONTACT_FORM_META_KEY = "access_contact_form";
+export const CONTACT_FORM_KEY = "cfdb7-list.php";
+
 export function getMetaValue(profile: CustomerProfile | null | undefined, key: string): string[] {
   const entry = profile?.meta_data?.find((m) => m.key === key);
   if (!entry || !entry.value) return [];
@@ -69,10 +73,18 @@ export function hasWcAbandonedCartAccess(profile: CustomerProfile | null | undef
   );
 }
 
+// Contact Forms: access_contact_form meta key me "cfdb7-list.php" check karta hai
+export function hasContactFormAccess(profile: CustomerProfile | null | undefined): boolean {
+  if (isAdministrator(profile)) return true;
+  const values = getMetaValue(profile, CONTACT_FORM_META_KEY);
+  return values.includes(CONTACT_FORM_KEY);
+}
+
 // Login ke baad ya default navigation me pehle allowed section par bhejta hai:
 // 1. Agar orders allow hai to /orders
 // 2. Agar abandoned cart allow hai to /abandoned-carts
 // 3. Agar wc abandoned cart allow hai to /wc-abandoned-carts
+// 4. Agar contact forms allow hai to /contact-forms
 export function getDefaultAllowedRoute(profile: CustomerProfile | null | undefined): string {
   if (hasOrdersAccess(profile)) {
     return "/orders";
@@ -82,6 +94,9 @@ export function getDefaultAllowedRoute(profile: CustomerProfile | null | undefin
   }
   if (hasWcAbandonedCartAccess(profile)) {
     return "/wc-abandoned-carts";
+  }
+  if (hasContactFormAccess(profile)) {
+    return "/contact-forms";
   }
   return "/orders";
 }
