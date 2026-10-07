@@ -714,3 +714,30 @@ export function getBackendDownloadUrl(token: string, filename: string, type: str
   return `${API_URL}/api/downloads/file?file=${encodeURIComponent(filename)}&type=${encodeURIComponent(type)}&token=${encodeURIComponent(token)}`;
 }
 
+export async function fetchExportCategories(token: string) {
+  const response = await fetch(`${API_URL}/api/export/categories`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+  return handleResponse(response, "Failed to fetch export categories");
+}
+
+export async function fetchExportStatesAndCities(token: string) {
+  const response = await fetch(`${API_URL}/api/export/states-and-cities`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+  return handleResponse(response, "Failed to fetch states and cities");
+}
+
+export function getExportDownloadUrl(token: string, params: Record<string, string>): string {
+  const searchParams = new URLSearchParams({ ...params, token });
+  return `${API_URL}/api/export/download?${searchParams.toString()}`;
+}
+
