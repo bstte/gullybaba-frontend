@@ -36,6 +36,10 @@ export const DOWNLOADS_ABANDONED_CARTS_KEY = "downloads-abandoned-carts";
 export const DOWNLOADS_ABANDONED_CARTS_LITE_KEY = "downloads-abandoned-carts-lite";
 export const DOWNLOADS_ORDERS_KEY = "downloads-orders";
 
+// Export section keys
+export const EXPORT_META_KEY = "access_export";
+export const EXPORT_PERMISSION_KEY = "custom-product-export";
+
 export function getMetaValue(profile: CustomerProfile | null | undefined, key: string): string[] {
   const entry = profile?.meta_data?.find((m) => m.key === key);
   if (!entry || !entry.value) return [];
@@ -103,12 +107,20 @@ export function canViewDownloadTab(profile: CustomerProfile | null | undefined, 
   return hasDownloadsFlag(profile, tabKey);
 }
 
+// Export: access_export meta key me "custom-product-export" check karta hai
+export function hasExportAccess(profile: CustomerProfile | null | undefined): boolean {
+  if (isAdministrator(profile)) return true;
+  const values = getMetaValue(profile, EXPORT_META_KEY);
+  return values.includes(EXPORT_PERMISSION_KEY);
+}
+
 // Login ke baad ya default navigation me pehle allowed section par bhejta hai:
 // 1. Agar orders allow hai to /orders
 // 2. Agar abandoned cart allow hai to /abandoned-carts
 // 3. Agar wc abandoned cart allow hai to /wc-abandoned-carts
 // 4. Agar contact forms allow hai to /contact-forms
 // 5. Agar downloads allow hai to /downloads
+// 6. Agar export allow hai to /export
 export function getDefaultAllowedRoute(profile: CustomerProfile | null | undefined): string {
   if (hasOrdersAccess(profile)) {
     return "/orders";
@@ -124,6 +136,9 @@ export function getDefaultAllowedRoute(profile: CustomerProfile | null | undefin
   }
   if (hasDownloadsAccess(profile)) {
     return "/downloads";
+  }
+  if (hasExportAccess(profile)) {
+    return "/export";
   }
   return "/orders";
 }

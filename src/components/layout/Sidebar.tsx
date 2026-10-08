@@ -10,6 +10,7 @@ import {
   hasWcAbandonedCartAccess,
   hasContactFormAccess,
   hasDownloadsAccess,
+  hasExportAccess,
 } from "@/src/lib/permissions";
 
 export default function Sidebar() {
@@ -31,7 +32,7 @@ export default function Sidebar() {
       name: "Export",
       path: "/export",
       icon: "M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5",
-      isAllowed: true,
+      isAllowed: hasExportAccess(profile),
     },
     // { name: "Products", path: "/products", icon: "M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" },
     // { name: "Coupons", path: "/coupons", icon: "M9 14.25l6-6m4.5-3.493V21a.75.75 0 01-1.28.53l-2.22-2.22-2.22 2.22a.75.75 0 01-1.06 0l-2.22-2.22-2.22 2.22a.75.75 0 01-1.28-.53V4.757c0-.52.263-1 .693-1.28A17.756 17.756 0 0112 2.25c2.787 0 5.426.634 7.787 1.777.43.28.693.76.693 1.28z" },

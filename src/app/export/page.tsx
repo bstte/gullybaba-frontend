@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
 import {
@@ -9,6 +10,7 @@ import {
   getExportDownloadUrl,
 } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
+import { hasExportAccess, getDefaultAllowedRoute } from "@/src/lib/permissions";
 
 const EXPORT_TABS = [
   { id: "export-products", label: "Export Products" },
@@ -81,7 +83,8 @@ const DEFAULT_CITIES = [
 ];
 
 export default function ExportPage() {
-  const { token, ready } = useAuthGuard();
+  const router = useRouter();
+  const { token, ready, profile } = useAuthGuard();
   const [activeTab, setActiveTab] = useState("export-products");
 
   // Tab 1: Export Products state
@@ -110,9 +113,18 @@ export default function ExportPage() {
     }, 4000);
   };
 
+  // Permission Guard: Agar access_export me custom-product-export nahi hai to redirect
+  useEffect(() => {
+    if (!ready || !profile) return;
+    if (!hasExportAccess(profile)) {
+      router.replace(getDefaultAllowedRoute(profile));
+    }
+  }, [ready, profile, router]);
+
   // Load Categories & State-City data from API if available
   useEffect(() => {
     if (!ready || !token) return;
+    if (profile && !hasExportAccess(profile)) return;
 
     fetchExportCategories(token)
       .then((res) => {
@@ -208,6 +220,23 @@ export default function ExportPage() {
     window.open(downloadUrl, "_blank");
     setTimeout(() => setIsExporting(false), 2000);
   };
+
+  if (!ready || (profile && !hasExportAccess(profile))) {
+    return (
+      <div className="h-screen w-screen flex flex-col bg-gray-50 text-gray-900 font-sans overflow-hidden">
+        <Header />
+        <div className="flex-1 flex overflow-hidden">
+          <Sidebar />
+          <main className="flex-1 flex items-center justify-center bg-gray-50">
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-xs text-gray-500 font-medium">Loading...</span>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-50 text-gray-900 font-sans overflow-hidden">
