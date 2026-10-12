@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
 import { fetchOrderCategories, fetchOrderMonths, fetchOrders, fetchOrderStatusCounts, updateOrderStatus } from "@/src/services/api";
@@ -1114,7 +1115,22 @@ export default function OrdersPage() {
                           return (
                             <tr
                               key={order.id}
-                              onClick={() => router.push(`/orders/${order.id}`)}
+                              onClick={(e) => {
+                                const target = e.target as HTMLElement;
+                                if (target.closest("input") || target.closest("button") || target.closest("a") || target.closest("select")) return;
+                                if (e.ctrlKey || e.metaKey) {
+                                  window.open(`/orders/${order.id}`, "_blank");
+                                } else {
+                                  router.push(`/orders/${order.id}`);
+                                }
+                              }}
+                              onAuxClick={(e) => {
+                                if (e.button === 1) {
+                                  const target = e.target as HTMLElement;
+                                  if (target.closest("input") || target.closest("button") || target.closest("a") || target.closest("select")) return;
+                                  window.open(`/orders/${order.id}`, "_blank");
+                                }
+                              }}
                               className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
                             >
                               {/* 1. Order */}
@@ -1130,26 +1146,31 @@ export default function OrdersPage() {
                                     />
                                     <div className="flex flex-col items-start gap-0.5">
                                       <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className="text-[#E31E24] font-bold group-hover:underline">
+                                        <Link
+                                          href={`/orders/${order.id}`}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="text-[#E31E24] font-bold group-hover:underline"
+                                        >
                                           #{order.id}
-                                        </span>
-                                        <span className="text-slate-800 font-semibold">
+                                        </Link>
+                                        <Link
+                                          href={`/orders/${order.id}`}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="text-slate-800 font-semibold hover:text-[#E31E24] hover:underline"
+                                        >
                                           {order.billing?.first_name} {order.billing?.last_name}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            router.push(`/orders/${order.id}`);
-                                          }}
+                                        </Link>
+                                        <Link
+                                          href={`/orders/${order.id}`}
+                                          onClick={(e) => e.stopPropagation()}
                                           title="View Order"
-                                          className="text-slate-400 hover:text-slate-700 transition-colors p-0.5 cursor-pointer"
+                                          className="text-slate-400 hover:text-slate-700 transition-colors p-0.5 cursor-pointer inline-flex items-center"
                                         >
                                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                           </svg>
-                                        </button>
+                                        </Link>
                                       </div>
                                       {isSameDay && (
                                         <div className="mt-1">
@@ -1244,9 +1265,8 @@ export default function OrdersPage() {
                               {visibleColumns.actions && (
                                 <td className="py-3 px-4 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center justify-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => router.push(`/orders/${order.id}`)}
+                                    <Link
+                                      href={`/orders/${order.id}`}
                                       title="View Order Details"
                                       className="px-2.5 py-1 text-slate-700 hover:text-white bg-slate-100 hover:bg-slate-900 rounded-md text-[11px] font-semibold transition-colors font-sans cursor-pointer flex items-center gap-1"
                                     >
@@ -1255,7 +1275,7 @@ export default function OrdersPage() {
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                       </svg>
                                       <span>View</span>
-                                    </button>
+                                    </Link>
                                   </div>
                                 </td>
                               )}
