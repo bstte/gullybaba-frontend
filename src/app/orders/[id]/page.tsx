@@ -6,7 +6,7 @@ import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
 import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, refundOrder, revokeOrderDownloadAccess, searchDownloadableProducts, sendToDtdc, updateOrder, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
-import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canRefundOrder, canSendToDtdc, canSendToShiprocket, canSendToTekipost, canViewDownloadableProduct, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
+import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canRefundOrder, canSendToDtdc, canSendToShiprocket, canSendToTekipost, canTrackShiprocket, canTrackTekipost, canViewDownloadableProduct, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
 
 interface DownloadItem {
   permission_id: number;
@@ -372,8 +372,13 @@ export default function OrderDetailPage() {
   const { token, ready, profile } = useAuthGuard();
   const canEditUserDetail = canEditOrderUserDetail(profile);
   const canEditStatus = canEditOrderStatus(profile);
-  const canShiprocket = canSendToShiprocket(profile);
-  const canTekipost = canSendToTekipost(profile);
+  const canSendShiprocket = canSendToShiprocket(profile);
+  const canTrackShiprocketStatus = canTrackShiprocket(profile);
+  const canShiprocket = canSendShiprocket || canTrackShiprocketStatus;
+
+  const canSendTekipost = canSendToTekipost(profile);
+  const canTrackTekipostStatus = canTrackTekipost(profile);
+  const canTekipost = canSendTekipost || canTrackTekipostStatus;
   const canDtdc = canSendToDtdc(profile);
   const canSpeedPost = canViewSpeedPost(profile);
   const canWeight = canViewOrderWeight(profile);
@@ -591,6 +596,16 @@ export default function OrderDetailPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Set initial active fulfillment tab to first allowed carrier
+  useEffect(() => {
+    if (!ready) return;
+    if (activeFulfillmentTab === "shiprocket" && !canShiprocket) {
+      if (canTekipost) setActiveFulfillmentTab("tekipost");
+      else if (canDtdc) setActiveFulfillmentTab("dtdc");
+      else if (canSpeedPost) setActiveFulfillmentTab("speedpost");
+    }
+  }, [ready, canShiprocket, canTekipost, canDtdc, canSpeedPost, activeFulfillmentTab]);
 
   const handleSelectProduct = (product: any) => {
     const display_label = formatDownloadProductLabel(product);
@@ -1711,85 +1726,91 @@ export default function OrderDetailPage() {
                               <div className="bg-slate-50/50 border border-slate-200/70 rounded-xl p-5 space-y-4">
                                 <div className="flex items-center justify-between flex-wrap gap-3">
                                   <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={handleSendToShiprocket}
-                                      disabled={isSendingShiprocket || isLoadingWeight || shiprocketStatus === "Sent"}
-                                      className="text-xs font-semibold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-slate-300 px-4 py-2 rounded-lg transition-all shadow-sm shadow-red-500/20 font-sans cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
-                                    >
-                                      {isSendingShiprocket ? (
-                                        <>
-                                          <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
-                                          <span>Building Order…</span>
-                                        </>
-                                      ) : (
-                                        "Send to Shiprocket"
-                                      )}
-                                    </button>
+                                    {canSendShiprocket && (
+                                      <button
+                                        type="button"
+                                        onClick={handleSendToShiprocket}
+                                        disabled={isSendingShiprocket || isLoadingWeight || shiprocketStatus === "Sent"}
+                                        className="text-xs font-semibold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-slate-300 px-4 py-2 rounded-lg transition-all shadow-sm shadow-red-500/20 font-sans cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
+                                      >
+                                        {isSendingShiprocket ? (
+                                          <>
+                                            <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                            <span>Building Order…</span>
+                                          </>
+                                        ) : (
+                                          "Send to Shiprocket"
+                                        )}
+                                      </button>
+                                    )}
 
-                                    <button
-                                      type="button"
-                                      onClick={handleFetchShiprocketStatus}
-                                      disabled={isFetchingShiprocketStatus}
-                                      className="text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 disabled:bg-slate-50 border border-slate-300 px-3.5 py-2 rounded-lg transition-colors font-sans cursor-pointer disabled:cursor-not-allowed shadow-2xs"
-                                    >
-                                      {isFetchingShiprocketStatus ? "Checking Status…" : "Get Shiprocket Status"}
-                                    </button>
+                                    {canTrackShiprocketStatus && (
+                                      <button
+                                        type="button"
+                                        onClick={handleFetchShiprocketStatus}
+                                        disabled={isFetchingShiprocketStatus}
+                                        className="text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 disabled:bg-slate-50 border border-slate-300 px-3.5 py-2 rounded-lg transition-colors font-sans cursor-pointer disabled:cursor-not-allowed shadow-2xs"
+                                      >
+                                        {isFetchingShiprocketStatus ? "Checking Status…" : "Get Shiprocket Status"}
+                                      </button>
+                                    )}
                                   </div>
 
                                   <div className="flex items-center gap-2">
                                     <span className="text-xs text-slate-500 font-sans">Current Status:</span>
                                     <span className={`text-xs font-bold px-3 py-1 rounded-full border font-sans ${shiprocketStatus === "Sent" ? "text-emerald-700 border-emerald-300 bg-emerald-50" : "text-[#E31E24] border-red-200 bg-red-50"
                                       }`}>
-                                      {shiprocketCurrentStatus || shiprocketStatus}
+                                      {canTrackShiprocketStatus ? (shiprocketCurrentStatus || shiprocketStatus) : shiprocketStatus}
                                     </span>
                                   </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Shiprocket AWB Code</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">
-                                      {shiprocketAwbCode || "—"}
+                                {canTrackShiprocketStatus && (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Shiprocket AWB Code</div>
+                                      <div className="text-xs font-semibold text-slate-800 font-mono">
+                                        {shiprocketAwbCode || "—"}
+                                      </div>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Pickup Date</div>
+                                      <div className="text-xs font-semibold text-slate-800 font-mono">
+                                        {shiprocketPickupDate || "—"}
+                                      </div>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Current Status</div>
+                                      <div className="text-xs font-semibold text-slate-800 font-mono">
+                                        {shiprocketCurrentStatus || "—"}
+                                      </div>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Courier Name</div>
+                                      <div className="text-xs font-semibold text-slate-800 font-mono">
+                                        {shiprocketCourierName || "—"}
+                                      </div>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Estimated Delivery Date</div>
+                                      <div className="text-xs font-semibold text-slate-800 font-mono">
+                                        {shiprocketEdd || "—"}
+                                      </div>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Shipment Tracking URL</div>
+                                      <a
+                                        href={shiprocketTrackUrl || (shiprocketAwbCode ? `https://Gullybaba.shiprocket.co/tracking/${shiprocketAwbCode}` : "https://www.shiprocket.in/shipment-tracking/")}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-[#E31E24] hover:underline font-medium break-all flex items-center gap-1"
+                                      >
+                                        <span className="truncate">{shiprocketTrackUrl || (shiprocketAwbCode ? `https://Gullybaba.shiprocket.co/tracking/${shiprocketAwbCode}` : "https://www.shiprocket.in/shipment-tracking/")}</span>
+                                        <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                      </a>
                                     </div>
                                   </div>
-                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Pickup Date</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">
-                                      {shiprocketPickupDate || "—"}
-                                    </div>
-                                  </div>
-                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Current Status</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">
-                                      {shiprocketCurrentStatus || "—"}
-                                    </div>
-                                  </div>
-                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Courier Name</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">
-                                      {shiprocketCourierName || "—"}
-                                    </div>
-                                  </div>
-                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Estimated Delivery Date</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">
-                                      {shiprocketEdd || "—"}
-                                    </div>
-                                  </div>
-                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Shipment Tracking URL</div>
-                                    <a
-                                      href={shiprocketTrackUrl || (shiprocketAwbCode ? `https://Gullybaba.shiprocket.co/tracking/${shiprocketAwbCode}` : "https://www.shiprocket.in/shipment-tracking/")}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-xs text-[#E31E24] hover:underline font-medium break-all flex items-center gap-1"
-                                    >
-                                      <span className="truncate">{shiprocketTrackUrl || (shiprocketAwbCode ? `https://Gullybaba.shiprocket.co/tracking/${shiprocketAwbCode}` : "https://www.shiprocket.in/shipment-tracking/")}</span>
-                                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                    </a>
-                                  </div>
-                                </div>
+                                )}
                               </div>
                             )}
 
@@ -1798,73 +1819,79 @@ export default function OrderDetailPage() {
                               <div className="bg-slate-50/50 border border-slate-200/70 rounded-xl p-5 space-y-4">
                                 <div className="flex items-center justify-between flex-wrap gap-3">
                                   <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={handleSendToTekipost}
-                                      disabled={isSendingTekipost || isLoadingWeight || tekipostStatus === "Sent"}
-                                      className="text-xs font-semibold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-slate-300 px-4 py-2 rounded-lg transition-all shadow-sm shadow-red-500/20 font-sans cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
-                                    >
-                                      {isSendingTekipost ? (
-                                        <>
-                                          <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
-                                          <span>Building Order…</span>
-                                        </>
-                                      ) : (
-                                        "Send to TekiPost"
-                                      )}
-                                    </button>
+                                    {canSendTekipost && (
+                                      <button
+                                        type="button"
+                                        onClick={handleSendToTekipost}
+                                        disabled={isSendingTekipost || isLoadingWeight || tekipostStatus === "Sent"}
+                                        className="text-xs font-semibold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-slate-300 px-4 py-2 rounded-lg transition-all shadow-sm shadow-red-500/20 font-sans cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
+                                      >
+                                        {isSendingTekipost ? (
+                                          <>
+                                            <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                            <span>Building Order…</span>
+                                          </>
+                                        ) : (
+                                          "Send to TekiPost"
+                                        )}
+                                      </button>
+                                    )}
 
-                                    <button
-                                      type="button"
-                                      onClick={handleFetchTekipostStatus}
-                                      disabled={isFetchingTekipostStatus}
-                                      className="text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 disabled:bg-slate-50 border border-slate-300 px-3.5 py-2 rounded-lg transition-colors font-sans cursor-pointer disabled:cursor-not-allowed shadow-2xs"
-                                    >
-                                      {isFetchingTekipostStatus ? "Checking Status…" : "Get TekiPost Status"}
-                                    </button>
+                                    {canTrackTekipostStatus && (
+                                      <button
+                                        type="button"
+                                        onClick={handleFetchTekipostStatus}
+                                        disabled={isFetchingTekipostStatus}
+                                        className="text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 disabled:bg-slate-50 border border-slate-300 px-3.5 py-2 rounded-lg transition-colors font-sans cursor-pointer disabled:cursor-not-allowed shadow-2xs"
+                                      >
+                                        {isFetchingTekipostStatus ? "Checking Status…" : "Get TekiPost Status"}
+                                      </button>
+                                    )}
                                   </div>
 
                                   <div className="flex items-center gap-2">
                                     <span className="text-xs text-slate-500 font-sans">Current Status:</span>
                                     <span className={`text-xs font-bold px-3 py-1 rounded-full border font-sans ${tekipostStatus === "Sent" ? "text-emerald-700 border-emerald-300 bg-emerald-50" : "text-[#E31E24] border-red-200 bg-red-50"
                                       }`}>
-                                      {tekipostStatus}
+                                      {canTrackTekipostStatus ? (tekipostTrackingStatus || tekipostStatus) : tekipostStatus}
                                     </span>
                                   </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tracking No.</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">
-                                      {tekipostTrackingNo || "—"}
+                                {canTrackTekipostStatus && (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tracking No.</div>
+                                      <div className="text-xs font-semibold text-slate-800 font-mono">
+                                        {tekipostTrackingNo || "—"}
+                                      </div>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Courier Name</div>
+                                      <div className="text-xs font-semibold text-slate-800 font-mono">
+                                        {tekipostCourierName || "—"}
+                                      </div>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Status</div>
+                                      <div className="text-xs font-semibold text-slate-800 font-mono">
+                                        {tekipostTrackingStatus || "—"}
+                                      </div>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs sm:col-span-3">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tracking URL</div>
+                                      <a
+                                        href="https://app.tekipost.com/track-order"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-[#E31E24] hover:underline font-medium break-all flex items-center gap-1"
+                                      >
+                                        <span>https://app.tekipost.com/track-order</span>
+                                        <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                      </a>
                                     </div>
                                   </div>
-                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Courier Name</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">
-                                      {tekipostCourierName || "—"}
-                                    </div>
-                                  </div>
-                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Status</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">
-                                      {tekipostTrackingStatus || "—"}
-                                    </div>
-                                  </div>
-                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs sm:col-span-3">
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tracking URL</div>
-                                    <a
-                                      href="https://app.tekipost.com/track-order"
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-xs text-[#E31E24] hover:underline font-medium break-all flex items-center gap-1"
-                                    >
-                                      <span>https://app.tekipost.com/track-order</span>
-                                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                    </a>
-                                  </div>
-                                </div>
+                                )}
                               </div>
                             )}
 

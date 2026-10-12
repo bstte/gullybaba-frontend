@@ -8,7 +8,9 @@ export const ORDER_SECTION_KEY = "woocommerce";
 export const EDIT_USER_DETAIL_KEY = "edit_user_detail";
 export const EDIT_ORDER_STATUS_KEY = "edit_order_status";
 export const SEND_TO_SHIPROCKET_KEY = "send_to_shiprocket";
+export const SHIPROCKET_TRACKING_KEY = "shiprocket_tracking";
 export const SEND_TO_TEKIPOST_KEY = "send_to_tekipost";
+export const TEKIPOST_TRACKING_KEY = "tekipost_tracking";
 export const SEND_TO_DTDC_KEY = "send_to_dtdc";
 export const SPEED_POST_KEY = "speed_post";
 export const ORDER_WEIGHT_KEY = "order_weight";
@@ -158,9 +160,19 @@ export function canSendToShiprocket(profile: CustomerProfile | null | undefined)
   return hasOrdersFlag(profile, SEND_TO_SHIPROCKET_KEY);
 }
 
+// Gates the "Get Shiprocket Status" button and tracking details.
+export function canTrackShiprocket(profile: CustomerProfile | null | undefined): boolean {
+  return hasOrdersFlag(profile, SHIPROCKET_TRACKING_KEY);
+}
+
 // Gates the "Send to Tekipost" button.
 export function canSendToTekipost(profile: CustomerProfile | null | undefined): boolean {
   return hasOrdersFlag(profile, SEND_TO_TEKIPOST_KEY);
+}
+
+// Gates the "Get TekiPost Status" button and tracking details.
+export function canTrackTekipost(profile: CustomerProfile | null | undefined): boolean {
+  return hasOrdersFlag(profile, TEKIPOST_TRACKING_KEY);
 }
 
 // Gates the "Send to DTDC" button.
