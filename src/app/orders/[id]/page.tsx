@@ -425,6 +425,18 @@ export default function OrderDetailPage() {
   const [copiedDownloadId, setCopiedDownloadId] = useState<number | null>(null);
   const [accessExpiresMap, setAccessExpiresMap] = useState<Record<number, string>>({});
   const [activeCalendarId, setActiveCalendarId] = useState<number | null>(null);
+  const [tekipostTracking, setTekipostTracking] = useState<{
+    tracking_number?: string;
+    courier_name?: string;
+    tracking_statuses?: string;
+  } | null>(null);
+  const [shiprocketTracking, setShiprocketTracking] = useState<{
+    awb_code?: string;
+    pickup_date?: string;
+    current_status?: string;
+    courier_name?: string;
+    edd?: string;
+  } | null>(null);
 
   // Search & Multi-select State
   const [downloadSearchQuery, setDownloadSearchQuery] = useState("");
@@ -853,7 +865,26 @@ export default function OrderDetailPage() {
       setIsFetchingTekipostStatus(true);
       const res = await fetchTekipostStatus(token, order.id);
       console.log(`[tekipost-status] response for order #${order.id}:`, res);
-      showNotification(res.message || "TekiPost status fetched.", "success");
+      if (res.success || res.tracking_number) {
+        setTekipostTracking({
+          tracking_number: res.tracking_number || "",
+          courier_name: res.courier_name || "",
+          tracking_statuses: res.tracking_statuses || "",
+        });
+        setOrder((prev: any) => {
+          if (!prev) return prev;
+          const meta = (prev.meta_data || []).filter(
+            (m: any) => !["_tekipost_awb", "_tekipost_courier_name", "_tekipost_c_status"].includes(m.key)
+          );
+          if (res.tracking_number) meta.push({ id: 0, key: "_tekipost_awb", value: res.tracking_number });
+          if (res.courier_name) meta.push({ id: 0, key: "_tekipost_courier_name", value: res.courier_name });
+          if (res.tracking_statuses) meta.push({ id: 0, key: "_tekipost_c_status", value: res.tracking_statuses });
+          return { ...prev, meta_data: meta };
+        });
+        showNotification(res.message || "TekiPost status fetched successfully.", "success");
+      } else {
+        showNotification(res.message || "Failed to fetch TekiPost status", "error");
+      }
     } catch (err: any) {
       showNotification(err.message || "Failed to fetch TekiPost status", "error");
     } finally {
@@ -867,7 +898,30 @@ export default function OrderDetailPage() {
       setIsFetchingShiprocketStatus(true);
       const res = await fetchShiprocketStatus(token, order.id);
       console.log(`[shiprocket-status] response for order #${order.id}:`, res);
-      showNotification(res.message || "Shiprocket status fetched.", "success");
+      if (res.success || res.awb_code) {
+        setShiprocketTracking({
+          awb_code: res.awb_code || "",
+          pickup_date: res.pickup_date || "",
+          current_status: res.current_status || "",
+          courier_name: res.courier_name || "",
+          edd: res.edd || "",
+        });
+        setOrder((prev: any) => {
+          if (!prev) return prev;
+          const meta = (prev.meta_data || []).filter(
+            (m: any) => !["_shiprocket_awb", "_shiprocket_pickup_date", "_shiprocket_current_status", "_shiprocket_courier_name", "_shiprocket_edd"].includes(m.key)
+          );
+          if (res.awb_code) meta.push({ id: 0, key: "_shiprocket_awb", value: res.awb_code });
+          if (res.pickup_date) meta.push({ id: 0, key: "_shiprocket_pickup_date", value: res.pickup_date });
+          if (res.current_status) meta.push({ id: 0, key: "_shiprocket_current_status", value: res.current_status });
+          if (res.courier_name) meta.push({ id: 0, key: "_shiprocket_courier_name", value: res.courier_name });
+          if (res.edd) meta.push({ id: 0, key: "_shiprocket_edd", value: res.edd });
+          return { ...prev, meta_data: meta };
+        });
+        showNotification(res.message || "Shiprocket status fetched successfully.", "success");
+      } else {
+        showNotification(res.message || "Failed to fetch Shiprocket status", "error");
+      }
     } catch (err: any) {
       showNotification(err.message || "Failed to fetch Shiprocket status", "error");
     } finally {
@@ -1123,12 +1177,56 @@ export default function OrderDetailPage() {
     ? order.coupon_lines.reduce((sum, c) => sum + parseFloat(c.discount || "0"), 0)
     : parseFloat(order?.discount_total || "0");
 
-  const getOrderMeta = (key: string) => order?.meta_data.find((m) => m.key === key)?.value || "";
+  const getOrderMeta = (key: string) => order?.meta_data?.find((m) => m.key === key)?.value || "";
   const shiprocketStatus = getOrderMeta("shiprocket_status") === "Sent" ? "Sent" : "Not Sent";
   const tekipostStatus = getOrderMeta("tekipost_status") === "Sent" ? "Sent" : "Not Sent";
   const dtdcReference = getOrderMeta("_dtdc_reference_number");
   const isDtdcSent = !!dtdcReference || getOrderMeta("dtdc_status") === "Sent";
   const dtdcStatus = isDtdcSent ? "Sent" : "Not Sent";
+
+  const tekipostTrackingNo =
+    tekipostTracking?.tracking_number ||
+    getOrderMeta("_tekipost_awb") ||
+    getOrderMeta("tekipost_awb") ||
+    getOrderMeta("tracking_number") ||
+    getOrderMeta("_tracking_number") ||
+    "";
+  const tekipostCourierName =
+    tekipostTracking?.courier_name ||
+    getOrderMeta("_tekipost_courier_name") ||
+    getOrderMeta("tekipost_courier_name") ||
+    getOrderMeta("courier_name") ||
+    "";
+  const tekipostTrackingStatus =
+    tekipostTracking?.tracking_statuses ||
+    getOrderMeta("_tekipost_c_status") ||
+    getOrderMeta("tekipost_c_status") ||
+    getOrderMeta("tracking_statuses") ||
+    "";
+
+  const shiprocketAwbCode =
+    shiprocketTracking?.awb_code ||
+    getOrderMeta("_shiprocket_awb") ||
+    getOrderMeta("_shiprocket_awb_code") ||
+    getOrderMeta("shiprocket_awb_code") ||
+    "";
+  const shiprocketPickupDate =
+    shiprocketTracking?.pickup_date ||
+    getOrderMeta("_shiprocket_pickup_date") ||
+    "";
+  const shiprocketCourierName =
+    shiprocketTracking?.courier_name ||
+    getOrderMeta("_shiprocket_courier_name") ||
+    "";
+  const shiprocketEdd =
+    shiprocketTracking?.edd ||
+    getOrderMeta("_shiprocket_edd") ||
+    "";
+  const shiprocketCurrentStatus =
+    shiprocketTracking?.current_status ||
+    getOrderMeta("_shiprocket_current_status") ||
+    getOrderMeta("_shiprocket_order_status") ||
+    "";
   const itemsPaymentType = order?.line_items.find((li) => li.payment_type)?.payment_type || "";
   const paymentTypeDisplay = order?.payment_type || itemsPaymentType || getOrderMeta("Payment Type") || getOrderMeta("_awcdp_deposits_payment_type");
 
@@ -1644,19 +1742,27 @@ export default function OrderDetailPage() {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                                   <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Shiprocket AWB Code</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">
+                                      {shiprocketAwbCode || "—"}
+                                    </div>
                                   </div>
                                   <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Pickup Date</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">
+                                      {shiprocketPickupDate || "—"}
+                                    </div>
                                   </div>
                                   <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Courier Name</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">
+                                      {shiprocketCourierName || "—"}
+                                    </div>
                                   </div>
                                   <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Estimated Delivery Date</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">
+                                      {shiprocketEdd || "—"}
+                                    </div>
                                   </div>
                                   <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs sm:col-span-2">
                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Shipment Tracking URL</div>
@@ -1717,15 +1823,21 @@ export default function OrderDetailPage() {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                                   <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tracking No.</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">
+                                      {tekipostTrackingNo || "—"}
+                                    </div>
                                   </div>
                                   <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Courier Name</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">
+                                      {tekipostCourierName || "—"}
+                                    </div>
                                   </div>
                                   <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Status</div>
-                                    <div className="text-xs font-semibold text-slate-800 font-mono">—</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">
+                                      {tekipostTrackingStatus || "—"}
+                                    </div>
                                   </div>
                                   <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs sm:col-span-3">
                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tracking URL</div>
