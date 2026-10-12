@@ -436,6 +436,7 @@ export default function OrderDetailPage() {
     current_status?: string;
     courier_name?: string;
     edd?: string;
+    track_url?: string;
   } | null>(null);
 
   // Search & Multi-select State
@@ -905,17 +906,19 @@ export default function OrderDetailPage() {
           current_status: res.current_status || "",
           courier_name: res.courier_name || "",
           edd: res.edd || "",
+          track_url: res.track_url || "",
         });
         setOrder((prev: any) => {
           if (!prev) return prev;
           const meta = (prev.meta_data || []).filter(
-            (m: any) => !["_shiprocket_awb", "_shiprocket_pickup_date", "_shiprocket_current_status", "_shiprocket_courier_name", "_shiprocket_edd"].includes(m.key)
+            (m: any) => !["_shiprocket_awb", "_shiprocket_pickup_date", "_shiprocket_current_status", "_shiprocket_courier_name", "_shiprocket_edd", "_shiprocket_track_url"].includes(m.key)
           );
           if (res.awb_code) meta.push({ id: 0, key: "_shiprocket_awb", value: res.awb_code });
           if (res.pickup_date) meta.push({ id: 0, key: "_shiprocket_pickup_date", value: res.pickup_date });
           if (res.current_status) meta.push({ id: 0, key: "_shiprocket_current_status", value: res.current_status });
           if (res.courier_name) meta.push({ id: 0, key: "_shiprocket_courier_name", value: res.courier_name });
           if (res.edd) meta.push({ id: 0, key: "_shiprocket_edd", value: res.edd });
+          if (res.track_url) meta.push({ id: 0, key: "_shiprocket_track_url", value: res.track_url });
           return { ...prev, meta_data: meta };
         });
         showNotification(res.message || "Shiprocket status fetched successfully.", "success");
@@ -1227,6 +1230,10 @@ export default function OrderDetailPage() {
     getOrderMeta("_shiprocket_current_status") ||
     getOrderMeta("_shiprocket_order_status") ||
     "";
+  const shiprocketTrackUrl =
+    shiprocketTracking?.track_url ||
+    getOrderMeta("_shiprocket_track_url") ||
+    (shiprocketAwbCode ? `https://Gullybaba.shiprocket.co/tracking/${shiprocketAwbCode}` : "");
   const itemsPaymentType = order?.line_items.find((li) => li.payment_type)?.payment_type || "";
   const paymentTypeDisplay = order?.payment_type || itemsPaymentType || getOrderMeta("Payment Type") || getOrderMeta("_awcdp_deposits_payment_type");
 
@@ -1734,7 +1741,7 @@ export default function OrderDetailPage() {
                                     <span className="text-xs text-slate-500 font-sans">Current Status:</span>
                                     <span className={`text-xs font-bold px-3 py-1 rounded-full border font-sans ${shiprocketStatus === "Sent" ? "text-emerald-700 border-emerald-300 bg-emerald-50" : "text-[#E31E24] border-red-200 bg-red-50"
                                       }`}>
-                                      {shiprocketStatus}
+                                      {shiprocketCurrentStatus || shiprocketStatus}
                                     </span>
                                   </div>
                                 </div>
@@ -1753,6 +1760,12 @@ export default function OrderDetailPage() {
                                     </div>
                                   </div>
                                   <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Current Status</div>
+                                    <div className="text-xs font-semibold text-slate-800 font-mono">
+                                      {shiprocketCurrentStatus || "—"}
+                                    </div>
+                                  </div>
+                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Courier Name</div>
                                     <div className="text-xs font-semibold text-slate-800 font-mono">
                                       {shiprocketCourierName || "—"}
@@ -1764,15 +1777,15 @@ export default function OrderDetailPage() {
                                       {shiprocketEdd || "—"}
                                     </div>
                                   </div>
-                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs sm:col-span-2">
+                                  <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Shipment Tracking URL</div>
                                     <a
-                                      href="https://www.shiprocket.in/shipment-tracking/"
+                                      href={shiprocketTrackUrl || (shiprocketAwbCode ? `https://Gullybaba.shiprocket.co/tracking/${shiprocketAwbCode}` : "https://www.shiprocket.in/shipment-tracking/")}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="text-xs text-[#E31E24] hover:underline font-medium break-all flex items-center gap-1"
                                     >
-                                      <span>https://www.shiprocket.in/shipment-tracking/</span>
+                                      <span className="truncate">{shiprocketTrackUrl || (shiprocketAwbCode ? `https://Gullybaba.shiprocket.co/tracking/${shiprocketAwbCode}` : "https://www.shiprocket.in/shipment-tracking/")}</span>
                                       <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                     </a>
                                   </div>
