@@ -333,6 +333,8 @@ interface OrderDetail {
   status: string;
   currency_symbol: string;
   date_created: string;
+  date_paid?: string;
+  date_completed?: string;
   total: string;
   shipping_total: string;
   discount_total?: string;
@@ -1370,8 +1372,13 @@ export default function OrderDetailPage() {
                     </div>
                     <div className="flex items-center gap-2 text-xs text-slate-500 font-sans flex-wrap">
                       <span>Payment via <strong className="text-slate-800 font-medium">{order.payment_method_title || order.payment_method || "—"}</strong></span>
+                      {order.date_paid && (
+                        <span className="text-slate-500">
+                          • Paid on {new Date(order.date_paid).toLocaleDateString("en-US", { timeZone: "Asia/Kolkata", month: "long", day: "numeric", year: "numeric" })} at {new Date(order.date_paid).toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase()}
+                        </span>
+                      )}
                       {order.customer_ip_address && <span className="text-slate-400">• Customer IP: {order.customer_ip_address}</span>}
-                      <span className="text-slate-400">• Created: {new Date(order.date_created).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                      <span className="text-slate-400">• Created: {new Date(order.date_created).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
@@ -1404,15 +1411,15 @@ export default function OrderDetailPage() {
                               <div className="text-[10px] font-bold text-slate-400 uppercase font-sans mb-1">Date Created:</div>
                               <div className="flex items-center gap-2">
                                 <div className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 font-sans font-medium">
-                                  {new Date(order.date_created).toLocaleDateString("en-CA")}
+                                  {new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(order.date_created))}
                                 </div>
                                 <span className="text-[11px] text-slate-400 font-sans">@</span>
                                 <div className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-sans text-center font-medium">
-                                  {new Date(order.date_created).toLocaleTimeString(undefined, { hour: "2-digit", hour12: false })}
+                                  {new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", hour12: false }).format(new Date(order.date_created))}
                                 </div>
                                 <span className="text-[11px] text-slate-400 font-sans">:</span>
                                 <div className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-sans text-center font-medium">
-                                  {new Date(order.date_created).toLocaleTimeString(undefined, { minute: "2-digit" }).replace(/.*:/, "")}
+                                  {new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", minute: "2-digit" }).format(new Date(order.date_created))}
                                 </div>
                               </div>
                             </div>

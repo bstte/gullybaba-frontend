@@ -1192,6 +1192,7 @@ export default function OrdersPage() {
                               {visibleColumns.date && (
                                 <td className="py-3 px-4 whitespace-nowrap text-slate-600 font-sans text-xs">
                                   {order.date_created ? new Date(order.date_created).toLocaleDateString("en-US", {
+                                    timeZone: "Asia/Kolkata",
                                     month: "short",
                                     day: "numeric",
                                     year: "numeric"
