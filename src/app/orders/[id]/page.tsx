@@ -83,6 +83,61 @@ function formatNoteDate(dateStr: string): string {
   }
 }
 
+function parseOrderDateTime(dateStr?: string | null) {
+  if (!dateStr) {
+    return {
+      date: "—",
+      hour: "00",
+      minute: "00",
+      createdFormatted: "—",
+      paidFormatted: "",
+    };
+  }
+
+  const str = String(dateStr).trim();
+  const match = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+
+  if (match) {
+    const [, year, month, day, hourStr, minStr] = match;
+    const h = parseInt(hourStr, 10);
+    const m = parseInt(minStr, 10);
+    const ampm = h >= 12 ? "pm" : "am";
+    const h12 = h % 12 || 12;
+    const padMin = String(m).padStart(2, "0");
+    const monthsShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthsLong = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const mIdx = parseInt(month, 10) - 1;
+    const mShort = monthsShort[mIdx] || month;
+    const mLong = monthsLong[mIdx] || month;
+
+    return {
+      date: `${year}-${month}-${day}`,
+      hour: hourStr,
+      minute: minStr,
+      createdFormatted: `${parseInt(day, 10)} ${mShort} ${year}, ${String(h12).padStart(2, "0")}:${padMin} ${ampm}`,
+      paidFormatted: `Paid on ${mLong} ${parseInt(day, 10)}, ${year} at ${h12}:${padMin} ${ampm}`,
+    };
+  }
+
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) {
+    return { date: "—", hour: "00", minute: "00", createdFormatted: str, paidFormatted: str };
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? "pm" : "am";
+  const h12 = h % 12 || 12;
+  const padMin = pad(m);
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    hour: pad(h),
+    minute: padMin,
+    createdFormatted: `${d.getDate()} ${d.toLocaleDateString("en-US", { month: "short" })} ${d.getFullYear()}, ${pad(h12)}:${padMin} ${ampm}`,
+    paidFormatted: `Paid on ${d.toLocaleDateString("en-US", { month: "long" })} ${d.getDate()}, ${d.getFullYear()} at ${h12}:${padMin} ${ampm}`,
+  };
+}
+
 interface CalendarPopoverProps {
   value: string;
   onChange: (val: string) => void;
@@ -1372,13 +1427,13 @@ export default function OrderDetailPage() {
                     </div>
                     <div className="flex items-center gap-2 text-xs text-slate-500 font-sans flex-wrap">
                       <span>Payment via <strong className="text-slate-800 font-medium">{order.payment_method_title || order.payment_method || "—"}</strong></span>
-                      {order.date_paid && (
+                      {order.date_paid && parseOrderDateTime(order.date_paid).paidFormatted && (
                         <span className="text-slate-500">
-                          • Paid on {new Date(order.date_paid).toLocaleDateString("en-US", { timeZone: "Asia/Kolkata", month: "long", day: "numeric", year: "numeric" })} at {new Date(order.date_paid).toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase()}
+                          • {parseOrderDateTime(order.date_paid).paidFormatted}
                         </span>
                       )}
                       {order.customer_ip_address && <span className="text-slate-400">• Customer IP: {order.customer_ip_address}</span>}
-                      <span className="text-slate-400">• Created: {new Date(order.date_created).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                      <span className="text-slate-400">• Created: {parseOrderDateTime(order.date_created).createdFormatted}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
@@ -1411,15 +1466,15 @@ export default function OrderDetailPage() {
                               <div className="text-[10px] font-bold text-slate-400 uppercase font-sans mb-1">Date Created:</div>
                               <div className="flex items-center gap-2">
                                 <div className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 font-sans font-medium">
-                                  {new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(order.date_created))}
+                                  {parseOrderDateTime(order.date_created).date}
                                 </div>
                                 <span className="text-[11px] text-slate-400 font-sans">@</span>
                                 <div className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-sans text-center font-medium">
-                                  {new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", hour12: false }).format(new Date(order.date_created))}
+                                  {parseOrderDateTime(order.date_created).hour}
                                 </div>
                                 <span className="text-[11px] text-slate-400 font-sans">:</span>
                                 <div className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-sans text-center font-medium">
-                                  {new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", minute: "2-digit" }).format(new Date(order.date_created))}
+                                  {parseOrderDateTime(order.date_created).minute}
                                 </div>
                               </div>
                             </div>

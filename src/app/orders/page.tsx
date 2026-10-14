@@ -69,6 +69,67 @@ interface Order {
   is_same_day_delivery?: boolean;
 }
 
+function parseOrderDateTime(dateStr?: string | null) {
+  if (!dateStr) return { date: "—", timePart: "", createdFormatted: "—" };
+  const str = String(dateStr).trim();
+  const match = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (match) {
+    const [, year, month, day, hourStr, minStr] = match;
+    const h = parseInt(hourStr, 10);
+    const m = parseInt(minStr, 10);
+    const ampm = h >= 12 ? "pm" : "am";
+    const h12 = h % 12 || 12;
+    const padMin = String(m).padStart(2, "0");
+    const monthsShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const mIdx = parseInt(month, 10) - 1;
+    const mShort = monthsShort[mIdx] || month;
+    return {
+      date: `${year}-${month}-${day}`,
+      timePart: `${h12}:${padMin} ${ampm}`,
+      createdFormatted: `${parseInt(day, 10)} ${mShort} ${year}, ${String(h12).padStart(2, "0")}:${padMin} ${ampm}`,
+    };
+  }
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return { date: "—", timePart: "", createdFormatted: str };
+  return {
+    date: d.toLocaleDateString("en-CA"),
+    timePart: d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
+    createdFormatted: d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+  };
+}
+
+function formatOrderDateAgo(dateStr?: string | null): string {
+  if (!dateStr) return "—";
+  try {
+    const str = String(dateStr).trim();
+    let orderTime = 0;
+    const match = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):?(\d{2})?/);
+    if (match) {
+      const [, y, m, d, h, min, s] = match;
+      orderTime = new Date(Number(y), Number(m) - 1, Number(d), Number(h), Number(min), Number(s || 0)).getTime();
+    } else {
+      orderTime = new Date(str).getTime();
+    }
+    if (!orderTime || isNaN(orderTime)) return "—";
+
+    const diffSec = Math.max(0, Math.floor((Date.now() - orderTime) / 1000));
+    if (diffSec < 45) return "Just now";
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return diffMin === 1 ? "1 minute ago" : `${diffMin} minutes ago`;
+    const diffHour = Math.floor(diffMin / 60);
+    if (diffHour < 24) return diffHour === 1 ? "1 hour ago" : `${diffHour} hours ago`;
+    const diffDay = Math.floor(diffHour / 24);
+    if (diffDay === 1) return "1 day ago";
+    if (diffDay < 30) return `${diffDay} days ago`;
+    const diffMonth = Math.floor(diffDay / 30);
+    if (diffMonth < 12) return diffMonth === 1 ? "1 month ago" : `${diffMonth} months ago`;
+    const diffYear = Math.floor(diffMonth / 12);
+    return diffYear === 1 ? "1 year ago" : `${diffYear} years ago`;
+  } catch {
+    return "—";
+  }
+}
+
 export const AVAILABLE_COLUMNS = [
   { id: "order", label: "Order" },
   { id: "date", label: "Date" },
@@ -1191,12 +1252,12 @@ export default function OrdersPage() {
                               {/* 2. Date */}
                               {visibleColumns.date && (
                                 <td className="py-3 px-4 whitespace-nowrap text-slate-600 font-sans text-xs">
-                                  {order.date_created ? new Date(order.date_created).toLocaleDateString("en-US", {
-                                    timeZone: "Asia/Kolkata",
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric"
-                                  }) : "—"}
+                                  <span
+                                    title={order.date_created ? parseOrderDateTime(order.date_created).createdFormatted : ""}
+                                    className="cursor-default"
+                                  >
+                                    {formatOrderDateAgo(order.date_created)}
+                                  </span>
                                 </td>
                               )}
 
