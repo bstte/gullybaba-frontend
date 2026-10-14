@@ -1270,7 +1270,7 @@ export default function OrderDetailPage() {
   );
 
   const itemsSubtotal = order?.line_items.reduce((sum, li) => sum + parseFloat(li.total || "0"), 0) ?? 0;
-  const totalItemCount = order?.line_items.reduce((sum, li) => sum + (li.quantity || 1), 0) ?? 0;
+  const totalItemCount = order?.line_items.reduce((sum, li) => sum + (Number(li.quantity) || 1), 0) ?? 0;
   const amountAlreadyRefunded = order?.refunds?.reduce((sum, r) => sum + (Number(r.total) || 0), 0) ?? 0;
   const totalAvailableToRefund = Math.max(0, parseFloat(order?.total || "0") - amountAlreadyRefunded);
   const feesTotal = order?.fee_lines.reduce((sum, f) => sum + parseFloat(f.total || "0"), 0) ?? 0;
@@ -2102,7 +2102,7 @@ export default function OrderDetailPage() {
                           </div>
                           <div>
                             <h3 className="text-sm font-bold text-slate-800">Items Ordered</h3>
-                            <p className="text-[11px] text-slate-400 font-sans">{order.line_items.length} {order.line_items.length === 1 ? "item" : "items"} in this order</p>
+                            {/* <p className="text-[11px] text-slate-400 font-sans">{order.line_items.length} {order.line_items.length === 1 ? "item" : "items"} in this order</p> */}
                           </div>
                         </div>
                         {order.line_items.length > 0 && (
@@ -2297,7 +2297,11 @@ export default function OrderDetailPage() {
                           </tbody>
                           <tfoot className="bg-slate-50/50">
                             <tr className="border-t border-slate-200">
-                              <td colSpan={5} className="py-2.5 px-5 text-right text-slate-500 font-sans text-xs">Items subtotal</td>
+                              <td colSpan={5} className="py-2.5 px-5 text-right text-slate-500 font-sans text-xs">Total No. of Item(s):</td>
+                              <td className="py-2.5 px-5 text-right text-slate-800 font-sans font-bold text-xs">{totalItemCount} item(s)</td>
+                            </tr>
+                            <tr className="border-t border-slate-200/60">
+                              <td colSpan={5} className="py-2.5 px-5 text-right text-slate-500 font-sans text-xs">Items Subtotal:</td>
                               <td className="py-2.5 px-5 text-right text-slate-800 font-sans font-medium text-xs">{order.currency_symbol}{itemsSubtotal.toFixed(2)}</td>
                             </tr>
                             {discountTotal > 0 && (
@@ -2309,7 +2313,7 @@ export default function OrderDetailPage() {
                               </tr>
                             )}
                             <tr className="border-t border-slate-200/80 bg-slate-100/40">
-                              <td colSpan={5} className="py-3 px-5 text-right text-slate-900 font-bold font-sans text-sm">Order Total</td>
+                              <td colSpan={5} className="py-3 px-5 text-right text-slate-900 font-bold font-sans text-sm">Order Total:</td>
                               <td className="py-3 px-5 text-right text-slate-900 font-black font-sans text-base">{order.currency_symbol}{parseFloat(order.total).toFixed(2)}</td>
                             </tr>
                           </tfoot>
