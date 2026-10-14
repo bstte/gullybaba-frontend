@@ -315,6 +315,32 @@ export async function revokeOrderDownloadAccess(
   return handleResponse(response, "Failed to revoke download access");
 }
 
+export async function updateOrderDownloadPermissions(
+  token: string,
+  id: number | string,
+  data: {
+    permissions?: Array<{
+      permission_id: number;
+      downloads_remaining?: string | number;
+      access_expires?: string | null;
+    }>;
+    permission_id?: number;
+    downloads_remaining?: string | number;
+    access_expires?: string | null;
+  }
+) {
+  const response = await fetch(`${API_URL}/api/orders/local/${id}/downloads/update`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  return handleResponse(response, "Failed to update download permissions");
+}
+
 export async function fetchOrderDownloadLogs(
   token: string,
   orderId: number | string,

@@ -1213,9 +1213,11 @@ export default function OrdersPage() {
                               {visibleColumns.billing && (
                                 <td className="py-3 px-4 font-sans text-xs text-slate-600 min-w-[180px]">
                                   <div className="flex flex-col gap-0.5 leading-snug">
-                                    <span className="font-semibold text-slate-800">
-                                      {order.billing?.first_name} {order.billing?.last_name}
-                                    </span>
+                                    {(order.billing?.first_name || order.billing?.last_name) && (
+                                      <span className="font-semibold text-slate-800">
+                                        {[order.billing?.first_name, order.billing?.last_name].filter(Boolean).join(" ")}
+                                      </span>
+                                    )}
                                     {order.billing?.address_1 && (
                                       <span>{order.billing.address_1}{order.billing.address_2 ? `, ${order.billing.address_2}` : ""}</span>
                                     )}
@@ -1224,7 +1226,20 @@ export default function OrdersPage() {
                                         {[order.billing?.city, order.billing?.state, order.billing?.postcode].filter(Boolean).join(", ")}
                                       </span>
                                     )}
-                                    {!order.billing?.address_1 && !order.billing?.city && <span className="text-slate-400">—</span>}
+                                    {!order.billing?.first_name && !order.billing?.last_name && !order.billing?.address_1 && !order.billing?.city && !order.payment_method_title && !order.payment_method && (
+                                      <span className="text-slate-400">—</span>
+                                    )}
+                                    {(() => {
+                                      const method = (order.payment_method_title || order.payment_method || "").trim();
+                                      if (!method) return null;
+                                      const normalized = /^cod$/i.test(method) ? "Cash on delivery" : method;
+                                      const payText = /^via\s+/i.test(normalized) ? normalized : `via ${normalized}`;
+                                      return (
+                                        <span className="text-slate-400 text-[11px] mt-0.5 leading-tight">
+                                          {payText}
+                                        </span>
+                                      );
+                                    })()}
                                   </div>
                                 </td>
                               )}

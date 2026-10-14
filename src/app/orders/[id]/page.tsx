@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
-import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, refundOrder, revokeOrderDownloadAccess, searchDownloadableProducts, sendToDtdc, updateOrder, updateOrderAddress, updateOrderStatus } from "@/src/services/api";
+import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, refundOrder, revokeOrderDownloadAccess, searchDownloadableProducts, sendToDtdc, updateOrder, updateOrderAddress, updateOrderDownloadPermissions, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
 import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canRefundOrder, canSendToDtdc, canSendToShiprocket, canSendToTekipost, canTrackShiprocket, canTrackTekipost, canViewDownloadableProduct, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
 
@@ -429,6 +429,9 @@ export default function OrderDetailPage() {
   const [expandedDownloadIds, setExpandedDownloadIds] = useState<Record<number, boolean>>({});
   const [copiedDownloadId, setCopiedDownloadId] = useState<number | null>(null);
   const [accessExpiresMap, setAccessExpiresMap] = useState<Record<number, string>>({});
+  const [initialAccessExpiresMap, setInitialAccessExpiresMap] = useState<Record<number, string>>({});
+  const [downloadsRemainingMap, setDownloadsRemainingMap] = useState<Record<number, string>>({});
+  const [initialDownloadsRemainingMap, setInitialDownloadsRemainingMap] = useState<Record<number, string>>({});
   const [activeCalendarId, setActiveCalendarId] = useState<number | null>(null);
   const [tekipostTracking, setTekipostTracking] = useState<{
     tracking_number?: string;
@@ -520,12 +523,17 @@ export default function OrderDetailPage() {
         setDownloads(res.downloads);
         const initialExpanded: Record<number, boolean> = {};
         const initialDates: Record<number, string> = {};
+        const initialRemaining: Record<number, string> = {};
         res.downloads.forEach((d: DownloadItem) => {
           initialExpanded[d.permission_id] = false;
           initialDates[d.permission_id] = d.access_expires ? d.access_expires.slice(0, 10) : "";
+          initialRemaining[d.permission_id] = d.downloads_remaining !== null && d.downloads_remaining !== undefined ? String(d.downloads_remaining) : "";
         });
         setExpandedDownloadIds(initialExpanded);
         setAccessExpiresMap(initialDates);
+        setInitialAccessExpiresMap(initialDates);
+        setDownloadsRemainingMap(initialRemaining);
+        setInitialDownloadsRemainingMap(initialRemaining);
       } else {
         setDownloads([]);
       }
@@ -948,7 +956,7 @@ export default function OrderDetailPage() {
   };
 
   // Single Update button for the order: saves the status change (if any) together with any
-  // billing/shipping edits and Speed Post changes, then re-fetches the order so the page reflects
+  // billing/shipping edits, Speed Post changes, and Downloadable permissions, then re-fetches the order so the page reflects
   // exactly what's now saved on WordPress/WooCommerce.
   const handleUpdate = async () => {
     if (!token || !order) return;
@@ -961,7 +969,20 @@ export default function OrderDetailPage() {
     const hasAddressChanges = !!(addressPayload.billing || addressPayload.shipping);
     const speedPostChanged = speedPost !== initialSpeedPost || speedTrackingId !== initialSpeedTrackingId;
 
-    if (!statusChanged && !hasAddressChanges && !speedPostChanged) {
+    const changedPermissions = downloads.filter((d) => {
+      const currRem = downloadsRemainingMap[d.permission_id] ?? "";
+      const initRem = initialDownloadsRemainingMap[d.permission_id] ?? "";
+      const currExp = accessExpiresMap[d.permission_id] ?? "";
+      const initExp = initialAccessExpiresMap[d.permission_id] ?? "";
+      return currRem !== initRem || currExp !== initExp;
+    }).map((d) => ({
+      permission_id: d.permission_id,
+      downloads_remaining: downloadsRemainingMap[d.permission_id] ?? "",
+      access_expires: accessExpiresMap[d.permission_id] || null,
+    }));
+    const permissionsChanged = changedPermissions.length > 0;
+
+    if (!statusChanged && !hasAddressChanges && !speedPostChanged && !permissionsChanged) {
       showNotification("No changes to update.", "error");
       return;
     }
@@ -981,7 +1002,15 @@ export default function OrderDetailPage() {
         updatePayload._speed_tracking_id = speedTrackingId;
       }
 
-      await updateOrder(token, order.id, updatePayload);
+      if (statusChanged || hasAddressChanges || speedPostChanged) {
+        await updateOrder(token, order.id, updatePayload);
+      }
+
+      if (permissionsChanged) {
+        await updateOrderDownloadPermissions(token, order.id, { permissions: changedPermissions });
+        await loadDownloads(token);
+      }
+
       showNotification(`Order #${order.id} updated successfully.`, "success");
       setIsEditingBilling(false);
       setIsEditingShipping(false);
@@ -2455,7 +2484,14 @@ export default function OrderDetailPage() {
                                             </label>
                                             <input
                                               type="text"
-                                              defaultValue={item.downloads_remaining ?? ""}
+                                              value={downloadsRemainingMap[item.permission_id] ?? ""}
+                                              onChange={(e) => {
+                                                setDownloadsRemainingMap((prev) => ({
+                                                  ...prev,
+                                                  [item.permission_id]: e.target.value,
+                                                }));
+                                              }}
+                                              placeholder="Unlimited"
                                               className="w-full sm:w-28 bg-white border border-gray-300 rounded px-2.5 py-1.5 text-xs text-gray-800 font-sans outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-[#E31E24]"
                                             />
                                           </div>
