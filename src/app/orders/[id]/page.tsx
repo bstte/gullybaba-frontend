@@ -6,7 +6,7 @@ import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
 import { addOrderNote, deleteOrderNote, fetchOrderById, fetchOrderDownloadLogs, fetchOrderDownloads, fetchOrderNotes, fetchOrderStatusCounts, fetchOrderWeight, fetchShiprocketStatus, fetchTekipostStatus, grantOrderDownloadAccess, previewShiprocket, previewTekipost, refundOrder, revokeOrderDownloadAccess, searchDownloadableProducts, sendToDtdc, updateOrder, updateOrderAddress, updateOrderDownloadPermissions, updateOrderStatus } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
-import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canRefundOrder, canSendToDtdc, canSendToShiprocket, canSendToTekipost, canTrackShiprocket, canTrackTekipost, canViewDownloadableProduct, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
+import { canDeleteOrderNote, canEditOrderStatus, canEditOrderUserDetail, canRefundOrder, canSendToDtdc, canSendToShiprocket, canSendToTekipost, canTrackDtdc, canTrackShiprocket, canTrackTekipost, canViewDownloadableProduct, canViewOrder, canViewOrderNotes, canViewOrderWeight, canViewProfileLink, canViewSpeedPost } from "@/src/lib/permissions";
 
 interface DownloadItem {
   permission_id: number;
@@ -436,7 +436,9 @@ export default function OrderDetailPage() {
   const canSendTekipost = canSendToTekipost(profile);
   const canTrackTekipostStatus = canTrackTekipost(profile);
   const canTekipost = canSendTekipost || canTrackTekipostStatus;
-  const canDtdc = canSendToDtdc(profile);
+  const canSendDtdc = canSendToDtdc(profile);
+  const canTrackDtdcStatus = canTrackDtdc(profile);
+  const canDtdc = canSendDtdc || canTrackDtdcStatus;
   const canSpeedPost = canViewSpeedPost(profile);
   const canWeight = canViewOrderWeight(profile);
   const canNotes = canViewOrderNotes(profile);
@@ -1284,7 +1286,14 @@ export default function OrderDetailPage() {
   const getOrderMeta = (key: string) => order?.meta_data?.find((m) => m.key === key)?.value || "";
   const shiprocketStatus = getOrderMeta("shiprocket_status") === "Sent" ? "Sent" : "Not Sent";
   const tekipostStatus = getOrderMeta("tekipost_status") === "Sent" ? "Sent" : "Not Sent";
-  const dtdcReference = getOrderMeta("_dtdc_reference_number");
+  const dtdcReference =
+    getOrderMeta("_dtdc_reference_number") ||
+    getOrderMeta("dtdc_reference_number") ||
+    getOrderMeta("dtdc_tracking_number") ||
+    getOrderMeta("_dtdc_tracking_number") ||
+    getOrderMeta("dtdc_tracking_no") ||
+    getOrderMeta("_dtdc_tracking_no") ||
+    "";
   const isDtdcSent = !!dtdcReference || getOrderMeta("dtdc_status") === "Sent";
   const dtdcStatus = isDtdcSent ? "Sent" : "Not Sent";
 
@@ -1991,21 +2000,23 @@ export default function OrderDetailPage() {
                               <div className="bg-slate-50/50 border border-slate-200/70 rounded-xl p-5 space-y-4">
                                 <div className="flex items-center justify-between flex-wrap gap-3">
                                   <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={handleSendToDtdc}
-                                      disabled={isSendingDtdc || isLoadingWeight || isDtdcSent}
-                                      className="text-xs font-semibold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-slate-300 px-4 py-2 rounded-lg transition-all shadow-sm shadow-red-500/20 font-sans cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
-                                    >
-                                      {isSendingDtdc ? (
-                                        <>
-                                          <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
-                                          <span>Sending…</span>
-                                        </>
-                                      ) : (
-                                        "Send to DTDC"
-                                      )}
-                                    </button>
+                                    {canSendDtdc && (
+                                      <button
+                                        type="button"
+                                        onClick={handleSendToDtdc}
+                                        disabled={isSendingDtdc || isLoadingWeight || isDtdcSent}
+                                        className="text-xs font-semibold text-white bg-[#E31E24] hover:bg-red-700 disabled:bg-slate-300 px-4 py-2 rounded-lg transition-all shadow-sm shadow-red-500/20 font-sans cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
+                                      >
+                                        {isSendingDtdc ? (
+                                          <>
+                                            <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                            <span>Sending…</span>
+                                          </>
+                                        ) : (
+                                          "Send to DTDC"
+                                        )}
+                                      </button>
+                                    )}
                                   </div>
 
                                   <div className="flex items-center gap-2">
@@ -2017,12 +2028,28 @@ export default function OrderDetailPage() {
                                   </div>
                                 </div>
 
-                                <div className="bg-white p-4 rounded-lg border border-slate-200/80 shadow-2xs">
-                                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">DTDC Reference No.</div>
-                                  <div className="text-sm font-bold text-slate-900 font-mono">
-                                    {dtdcReference || <span className="text-slate-400 font-normal italic">No reference number generated yet.</span>}
+                                {canTrackDtdcStatus && (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tracking No. :</div>
+                                      <div className="text-xs font-semibold text-slate-800 font-mono">
+                                        {dtdcReference || <span className="text-slate-400 font-normal italic">No tracking number generated yet.</span>}
+                                      </div>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs sm:col-span-2">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tracking URL:</div>
+                                      <a
+                                        href="https://www.dtdc.com/trackshipment"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-[#E31E24] hover:underline font-medium break-all flex items-center gap-1"
+                                      >
+                                        <span>https://www.dtdc.com/trackshipment</span>
+                                        <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                      </a>
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </div>
                             )}
 

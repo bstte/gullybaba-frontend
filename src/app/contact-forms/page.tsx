@@ -8,6 +8,7 @@ import Sidebar from "@/src/components/layout/Sidebar";
 import { fetchContactForms } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
 import { hasContactFormAccess, getDefaultAllowedRoute } from "@/src/lib/permissions";
+import { ScreenOptions, ScreenOptionsToggle, TablePagination } from "@/src/components/common";
 
 interface ContactFormItem {
   id: number;
@@ -24,6 +25,49 @@ export default function ContactFormsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  // Screen Options & Pagination state
+  const SCREEN_OPTIONS_STORAGE_KEY = "gullybaba_contact_forms_screen_options";
+  const [isScreenOptionsOpen, setIsScreenOptionsOpen] = useState(false);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(20);
+  const [tempItemsPerPage, setTempItemsPerPage] = useState<string>("20");
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Load itemsPerPage from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SCREEN_OPTIONS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.itemsPerPage && typeof parsed.itemsPerPage === "number") {
+          setItemsPerPage(parsed.itemsPerPage);
+          setTempItemsPerPage(parsed.itemsPerPage.toString());
+        }
+      }
+    } catch {}
+  }, []);
+
+  const toggleScreenOptions = () => {
+    setIsScreenOptionsOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setTempItemsPerPage(itemsPerPage.toString());
+      }
+      return next;
+    });
+  };
+
+  const handleApplyScreenOptions = () => {
+    const parsed = Math.max(1, Math.min(100, parseInt(tempItemsPerPage, 10) || 20));
+    setItemsPerPage(parsed);
+    setTempItemsPerPage(parsed.toString());
+    setCurrentPage(1);
+    try {
+      localStorage.setItem(SCREEN_OPTIONS_STORAGE_KEY, JSON.stringify({ itemsPerPage: parsed }));
+    } catch {}
+    setIsScreenOptionsOpen(false);
+    showNotification("Screen options applied successfully", "success");
+  };
 
   const showNotification = (message: string, type: "success" | "error" = "success") => {
     setNotification({ message, type });
@@ -61,6 +105,12 @@ export default function ContactFormsPage() {
 
   const filteredForms = forms.filter((f) =>
     f.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+  );
+
+  const totalPages = Math.max(1, Math.ceil(filteredForms.length / itemsPerPage));
+  const paginatedForms = filteredForms.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
   );
 
   const totalSubmissions = forms.reduce((acc, curr) => acc + (curr.count || 0), 0);
@@ -129,7 +179,7 @@ export default function ContactFormsPage() {
                 type="button"
                 onClick={() => token && loadData(token)}
                 disabled={isLoading}
-                className="text-xs font-semibold text-gray-700 hover:text-gray-900 border border-gray-250 bg-white hover:bg-gray-50 px-3 py-1.5 rounded-md shadow-xs transition-colors flex items-center gap-1.5"
+                className="text-xs font-semibold text-gray-700 hover:text-gray-900 border border-gray-250 bg-white hover:bg-gray-50 px-3 py-1.5 rounded-md shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
                 title="Refresh contact forms"
               >
                 <svg
@@ -147,8 +197,22 @@ export default function ContactFormsPage() {
                 </svg>
                 <span>{isLoading ? "Refreshing..." : "Refresh"}</span>
               </button>
+
+              <ScreenOptionsToggle
+                isOpen={isScreenOptionsOpen}
+                onToggle={toggleScreenOptions}
+              />
             </div>
           </div>
+
+          {/* Screen Options Collapsible Drawer */}
+          <ScreenOptions
+            isOpen={isScreenOptionsOpen}
+            title="Contact Forms"
+            tempItemsPerPage={tempItemsPerPage}
+            onTempItemsPerPageChange={setTempItemsPerPage}
+            onApply={handleApplyScreenOptions}
+          />
 
           {/* Filters Bar */}
           <div className="bg-white border-b border-gray-200 px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
@@ -167,14 +231,20 @@ export default function ContactFormsPage() {
                   type="text"
                   placeholder="Filter forms by name..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-250 rounded-md text-xs focus:bg-white focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] outline-none font-sans"
                 />
               </div>
               {searchQuery && (
                 <button
-                  onClick={() => setSearchQuery("")}
-                  className="text-xs text-gray-500 hover:text-gray-800 px-2 py-1 border border-gray-200 rounded hover:bg-gray-100 transition-colors"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setCurrentPage(1);
+                  }}
+                  className="text-xs text-gray-500 hover:text-gray-800 px-2 py-1 border border-gray-200 rounded hover:bg-gray-100 transition-colors cursor-pointer"
                 >
                   Clear
                 </button>
@@ -230,14 +300,14 @@ export default function ContactFormsPage() {
                         </td>
                       </tr>
                     ) : (
-                      filteredForms.map((form, index) => (
+                      paginatedForms.map((form, index) => (
                         <tr
                           key={form.id}
                           onClick={() => router.push(`/contact-forms/${form.id}`)}
                           className="hover:bg-blue-50/40 cursor-pointer transition-colors group"
                         >
                           <td className="py-3.5 px-6 font-mono text-gray-400 text-[11px]">
-                            {index + 1}
+                            {(currentPage - 1) * itemsPerPage + index + 1}
                           </td>
                           <td className="py-3.5 px-6">
                             <div className="flex items-center gap-3">
@@ -288,15 +358,16 @@ export default function ContactFormsPage() {
                 </table>
               </div>
 
-              {/* Table Footer */}
-              <div className="bg-gray-50/70 border-t border-gray-200 px-6 py-3 flex items-center justify-between text-xs text-gray-500 font-sans">
-                <span>
-                  Showing {filteredForms.length} of {forms.length} {forms.length === 1 ? "form" : "forms"}
-                </span>
-                <span className="text-[11px] text-gray-400">
-                  Contact Form CFDB7 Integration
-                </span>
-              </div>
+              {/* Table Footer with Pagination */}
+              <TablePagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={filteredForms.length}
+                itemsPerPage={itemsPerPage}
+                currentCount={paginatedForms.length}
+                onPageChange={setCurrentPage}
+                itemLabel="forms"
+              />
             </div>
           </div>
 

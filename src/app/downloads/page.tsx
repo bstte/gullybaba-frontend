@@ -6,6 +6,7 @@ import Header from "@/src/components/layout/Header";
 import Sidebar from "@/src/components/layout/Sidebar";
 import { fetchDownloads, getBackendDownloadUrl } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
+import { ScreenOptions, ScreenOptionsToggle, TablePagination } from "@/src/components/common";
 import {
   hasDownloadsAccess,
   canViewDownloadTab,
@@ -80,6 +81,49 @@ export default function DownloadsPage() {
   const [wpApiStatus, setWpApiStatus] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
+  // Screen Options & Pagination state
+  const SCREEN_OPTIONS_STORAGE_KEY = "gullybaba_downloads_screen_options";
+  const [isScreenOptionsOpen, setIsScreenOptionsOpen] = useState(false);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(20);
+  const [tempItemsPerPage, setTempItemsPerPage] = useState<string>("20");
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Load itemsPerPage from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SCREEN_OPTIONS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.itemsPerPage && typeof parsed.itemsPerPage === "number") {
+          setItemsPerPage(parsed.itemsPerPage);
+          setTempItemsPerPage(parsed.itemsPerPage.toString());
+        }
+      }
+    } catch {}
+  }, []);
+
+  const toggleScreenOptions = () => {
+    setIsScreenOptionsOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setTempItemsPerPage(itemsPerPage.toString());
+      }
+      return next;
+    });
+  };
+
+  const handleApplyScreenOptions = () => {
+    const parsed = Math.max(1, Math.min(100, parseInt(tempItemsPerPage, 10) || 20));
+    setItemsPerPage(parsed);
+    setTempItemsPerPage(parsed.toString());
+    setCurrentPage(1);
+    try {
+      localStorage.setItem(SCREEN_OPTIONS_STORAGE_KEY, JSON.stringify({ itemsPerPage: parsed }));
+    } catch {}
+    setIsScreenOptionsOpen(false);
+    showNotification("Screen options applied successfully", "success");
+  };
+
   const showNotification = (message: string, type: "success" | "error" = "success") => {
     setNotification({ message, type });
     setTimeout(() => {
@@ -149,6 +193,12 @@ export default function DownloadsPage() {
 
   const currentCategoryObj = allowedCategories.find((c) => c.id === activeCategory) || allowedCategories[0];
 
+  const totalPages = Math.max(1, Math.ceil(downloads.length / itemsPerPage));
+  const paginatedDownloads = downloads.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-50 text-gray-900 font-sans overflow-hidden">
       {/* Top Header */}
@@ -214,7 +264,7 @@ export default function DownloadsPage() {
                 type="button"
                 onClick={() => token && activeCategory && loadData(token, activeCategory, searchQuery)}
                 disabled={isLoading || !activeCategory}
-                className="text-xs font-semibold text-gray-700 hover:text-gray-900 border border-gray-250 bg-white hover:bg-gray-50 px-3 py-1.5 rounded-md shadow-xs transition-colors flex items-center gap-1.5"
+                className="text-xs font-semibold text-gray-700 hover:text-gray-900 border border-gray-250 bg-white hover:bg-gray-50 px-3 py-1.5 rounded-md shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
                 title="Refresh files"
               >
                 <svg
@@ -232,8 +282,22 @@ export default function DownloadsPage() {
                 </svg>
                 <span>{isLoading ? "Refreshing..." : "Refresh"}</span>
               </button>
+
+              <ScreenOptionsToggle
+                isOpen={isScreenOptionsOpen}
+                onToggle={toggleScreenOptions}
+              />
             </div>
           </div>
+
+          {/* Screen Options Collapsible Drawer */}
+          <ScreenOptions
+            isOpen={isScreenOptionsOpen}
+            title={currentCategoryObj ? currentCategoryObj.label : "Downloads"}
+            tempItemsPerPage={tempItemsPerPage}
+            onTempItemsPerPageChange={setTempItemsPerPage}
+            onApply={handleApplyScreenOptions}
+          />
 
           {/* Sub-navigation tabs matching WordPress Admin menu & filtered by permission */}
           {allowedCategories.length > 0 && (
@@ -361,115 +425,130 @@ export default function DownloadsPage() {
                     </p>
                   </div>
                 ) : (
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-gray-100/75 border-b border-gray-200 text-gray-700 font-bold uppercase tracking-wider text-[11px]">
-                        <th className="py-3 px-4 w-20 text-center font-bold">S. No.</th>
-                        <th className="py-3 px-6 font-bold">Date</th>
-                        <th className="py-3 px-6 font-bold">File Name</th>
-                        <th className="py-3 px-4 font-bold text-center">Size</th>
-                        <th className="py-3 px-6 text-right font-bold w-36">Download</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-150">
-                      {downloads.length > 0 ? (
-                        downloads.map((item, index) => {
-                          return (
-                            <tr
-                              key={item.filename || index}
-                              className="hover:bg-gray-50/80 transition-colors"
-                            >
-                              <td className="py-3 px-4 text-center font-medium text-gray-600">
-                                {item.s_no || index + 1}
-                              </td>
-                              <td className="py-3 px-6">
-                                <div className="flex items-center gap-2 font-medium text-gray-900">
-                                  <svg
-                                    className="w-3.5 h-3.5 text-gray-400"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                    />
-                                  </svg>
-                                  <span>{item.date}</span>
-                                </div>
-                              </td>
-                              <td className="py-3 px-6">
-                                <span className="font-mono text-[11px] text-gray-700 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
-                                  {item.filename}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center text-gray-500 font-mono text-[11px]">
-                                {item.file_size || "—"}
-                              </td>
-                              <td className="py-3 px-6 text-right">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDownloadClick(item)}
-                                  className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#E31E24] hover:bg-[#c9191e] active:scale-95 text-white text-xs font-semibold rounded-md shadow-xs transition-all cursor-pointer"
-                                  title={`Download ${item.filename}`}
-                                >
-                                  <svg
-                                    className="w-3.5 h-3.5"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                    strokeWidth={2.2}
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                                    />
-                                  </svg>
-                                  <span>Download</span>
-                                </button>
-                              </td>
+                  <>
+                    <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-gray-100/75 border-b border-gray-200 text-gray-700 font-bold uppercase tracking-wider text-[11px]">
+                              <th className="py-3 px-4 w-20 text-center font-bold">S. No.</th>
+                              <th className="py-3 px-6 font-bold">Date</th>
+                              <th className="py-3 px-6 font-bold">File Name</th>
+                              <th className="py-3 px-4 font-bold text-center">Size</th>
+                              <th className="py-3 px-6 text-right font-bold w-36">Download</th>
                             </tr>
-                          );
-                        })
-                      ) : (
-                        !isLoading && (
-                          <tr>
-                            <td colSpan={5} className="py-12 text-center text-gray-500">
-                              <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
-                                <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3 text-gray-400">
-                                  <svg
-                                    className="w-6 h-6"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
+                          </thead>
+                          <tbody className="divide-y divide-gray-150">
+                            {paginatedDownloads.length > 0 ? (
+                              paginatedDownloads.map((item, index) => {
+                                return (
+                                  <tr
+                                    key={item.filename || index}
+                                    className="hover:bg-gray-50/80 transition-colors"
                                   >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={1.5}
-                                      d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 12h4.5m-4.5 0H7.5m5.25 0h2.25m-7.5-6h7.5m-7.5-3h7.5M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15A2.25 2.25 0 002.25 6.75v10.5A2.25 2.25 0 004.5 19.5z"
-                                    />
-                                  </svg>
-                                </div>
-                                <p className="text-xs font-semibold text-gray-700">
-                                  No files found for {currentCategoryObj ? currentCategoryObj.label : "selected category"}
-                                </p>
-                                <p className="text-[11px] text-gray-400 mt-1">
-                                  {searchQuery
-                                    ? `No files matching "${searchQuery}". Try a different keyword.`
-                                    : "Cron job export files will appear here once generated on the server."}
-                                </p>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      )}
-                    </tbody>
-                  </table>
-                )}
+                                    <td className="py-3 px-4 text-center font-medium text-gray-600">
+                                      {item.s_no || (currentPage - 1) * itemsPerPage + index + 1}
+                                    </td>
+                                    <td className="py-3 px-6">
+                                      <div className="flex items-center gap-2 font-medium text-gray-900">
+                                        <svg
+                                          className="w-3.5 h-3.5 text-gray-400"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                          />
+                                        </svg>
+                                        <span>{item.date}</span>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-6">
+                                      <span className="font-mono text-[11px] text-gray-700 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
+                                        {item.filename}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-4 text-center text-gray-500 font-mono text-[11px]">
+                                      {item.file_size || "—"}
+                                    </td>
+                                    <td className="py-3 px-6 text-right">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDownloadClick(item)}
+                                        className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#E31E24] hover:bg-[#c9191e] active:scale-95 text-white text-xs font-semibold rounded-md shadow-xs transition-all cursor-pointer"
+                                        title={`Download ${item.filename}`}
+                                      >
+                                        <svg
+                                          className="w-3.5 h-3.5"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                          strokeWidth={2.2}
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                                          />
+                                        </svg>
+                                        <span>Download</span>
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            ) : (
+                              !isLoading && (
+                                <tr>
+                                  <td colSpan={5} className="py-12 text-center text-gray-500">
+                                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                                      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3 text-gray-400">
+                                        <svg
+                                          className="w-6 h-6"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={1.5}
+                                            d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 12h4.5m-4.5 0H7.5m5.25 0h2.25m-7.5-6h7.5m-7.5-3h7.5M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15A2.25 2.25 0 002.25 6.75v10.5A2.25 2.25 0 004.5 19.5z"
+                                          />
+                                        </svg>
+                                      </div>
+                                      <p className="text-xs font-semibold text-gray-700">
+                                        No files found for {currentCategoryObj ? currentCategoryObj.label : "selected category"}
+                                      </p>
+                                      <p className="text-[11px] text-gray-400 mt-1">
+                                        {searchQuery
+                                          ? `No files matching "${searchQuery}". Try a different keyword.`
+                                          : "Cron job export files will appear here once generated on the server."}
+                                      </p>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            )}
+                          </tbody>
+                        </table>
+
+                        {/* Pagination Footer */}
+                        {downloads.length > 0 && (
+                          <TablePagination
+                            currentPage={currentPage}
+                            totalPages={totalPages}
+                            totalItems={downloads.length}
+                            itemsPerPage={itemsPerPage}
+                            currentCount={paginatedDownloads.length}
+                            onPageChange={setCurrentPage}
+                            itemLabel="files"
+                          />
+                        )}
+                      </>
+                    )}
               </div>
             </div>
           </div>

@@ -18,6 +18,7 @@ import {
   getDefaultAllowedRoute,
   isAdministrator,
 } from "@/src/lib/permissions";
+import { ScreenOptions, ScreenOptionsToggle, TablePagination } from "@/src/components/common";
 
 interface Order {
   id: number;
@@ -103,67 +104,81 @@ function formatOrderDateAgo(dateStr?: string | null): string {
   try {
     const str = String(dateStr).trim();
     let orderTime = 0;
+    let day = "";
+    let month = "";
+    let year = "";
     const match = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):?(\d{2})?/);
     if (match) {
       const [, y, m, d, h, min, s] = match;
+      year = y;
+      month = m;
+      day = d;
       orderTime = new Date(Number(y), Number(m) - 1, Number(d), Number(h), Number(min), Number(s || 0)).getTime();
     } else {
-      orderTime = new Date(str).getTime();
+      const d = new Date(str);
+      orderTime = d.getTime();
+      if (!isNaN(orderTime)) {
+        year = String(d.getFullYear());
+        month = String(d.getMonth() + 1).padStart(2, "0");
+        day = String(d.getDate()).padStart(2, "0");
+      }
     }
     if (!orderTime || isNaN(orderTime)) return "—";
 
     const diffSec = Math.max(0, Math.floor((Date.now() - orderTime) / 1000));
-    if (diffSec < 45) return "Just now";
-    const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return diffMin === 1 ? "1 minute ago" : `${diffMin} minutes ago`;
-    const diffHour = Math.floor(diffMin / 60);
-    if (diffHour < 24) return diffHour === 1 ? "1 hour ago" : `${diffHour} hours ago`;
-    const diffDay = Math.floor(diffHour / 24);
-    if (diffDay === 1) return "1 day ago";
-    if (diffDay < 30) return `${diffDay} days ago`;
-    const diffMonth = Math.floor(diffDay / 30);
-    if (diffMonth < 12) return diffMonth === 1 ? "1 month ago" : `${diffMonth} months ago`;
-    const diffYear = Math.floor(diffMonth / 12);
-    return diffYear === 1 ? "1 year ago" : `${diffYear} years ago`;
+
+    // Sirf 24 hours (86,400 seconds) tak relative time show hoga
+    if (diffSec < 86400) {
+      if (diffSec < 45) return "Just now";
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return diffMin === 1 ? "1 minute ago" : `${diffMin} minutes ago`;
+      const diffHour = Math.floor(diffMin / 60);
+      if (diffHour < 24) return diffHour === 1 ? "1 hour ago" : `${diffHour} hours ago`;
+    }
+
+    // 24 hours se zyada hone par direct date show kare
+    if (day && month && year) {
+      const monthsShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const mIdx = parseInt(month, 10) - 1;
+      const mShort = monthsShort[mIdx] || month;
+      return `${parseInt(day, 10)} ${mShort} ${year}`;
+    }
+
+    const fallbackDate = new Date(orderTime);
+    return fallbackDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
   } catch {
     return "—";
   }
 }
 
 export const AVAILABLE_COLUMNS = [
-  { id: "order", label: "Order" },
-  { id: "date", label: "Date" },
-  { id: "status", label: "Status" },
+  { id: "order", label: "Order & Date" },
+  { id: "customer", label: "Customer & Contact" },
   { id: "billing", label: "Billing" },
-  { id: "ship_to", label: "Ship to" },
-  { id: "total", label: "Total" },
-  { id: "actions", label: "Actions" },
+  { id: "total", label: "Total & Payment" },
   { id: "category", label: "Category" },
-  { id: "mobile", label: "Mobile" },
-  { id: "email", label: "Email" },
-  { id: "updated_by", label: "Updated by" },
-  { id: "delivered_by", label: "Delivered by" },
   { id: "status_change", label: "Status Change" },
+  { id: "delivered_by", label: "Delivered by" },
+  { id: "updated_by", label: "Updated by" },
+  { id: "ship_to", label: "Ship to" },
   { id: "origin", label: "Origin" },
+  { id: "actions", label: "Actions" },
 ] as const;
 
 export type ColumnId = (typeof AVAILABLE_COLUMNS)[number]["id"];
 
 export const DEFAULT_VISIBLE_COLUMNS: Record<ColumnId, boolean> = {
   order: true,
-  date: true,
-  status: true,
-  billing: false,
-  ship_to: false,
+  customer: true,
+  billing: true,
   total: true,
-  actions: false,
   category: true,
-  mobile: true,
-  email: true,
-  updated_by: true,
-  delivered_by: true,
   status_change: true,
+  delivered_by: true,
+  updated_by: true,
+  ship_to: false,
   origin: false,
+  actions: false,
 };
 
 const SCREEN_OPTIONS_STORAGE_KEY = "gullybaba_order_screen_options";
@@ -192,6 +207,7 @@ export default function OrdersPage() {
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
 
   // Filter values
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
@@ -209,6 +225,14 @@ export default function OrdersPage() {
   const [monthOptions, setMonthOptions] = useState<{ value: string; label: string }[]>([]);
   const [selectedMonth, setSelectedMonth] = useState("0");
 
+  const activeFiltersCount = [
+    Boolean(startDate || endDate),
+    selectedCategories.length > 0,
+    Boolean(appliedPaymentMethod),
+    Boolean(appliedDemandType),
+    selectedMonth !== "0",
+  ].filter(Boolean).length;
+
   // Selected status action per row
   const [rowStatusActions, setRowStatusActions] = useState<Record<number, string>>({});
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<Record<number, boolean>>({});
@@ -223,14 +247,40 @@ export default function OrdersPage() {
   const topScrollRef = useRef<HTMLDivElement>(null);
   const [tableScrollWidth, setTableScrollWidth] = useState(1400);
 
-  // Load Screen Options from localStorage on mount
+  // Load Screen Options from localStorage on mount with backward compatibility migration
   useEffect(() => {
     try {
       const saved = localStorage.getItem(SCREEN_OPTIONS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.columns && typeof parsed.columns === "object") {
-          const mergedCols = { ...DEFAULT_VISIBLE_COLUMNS, ...parsed.columns };
+          const raw = parsed.columns;
+          // Backwards compatibility migration: if customer is not explicitly set, migrate from mobile/email
+          const customerVal =
+            raw.customer !== undefined
+              ? Boolean(raw.customer)
+              : raw.mobile !== undefined || raw.email !== undefined
+                ? Boolean(raw.mobile || raw.email)
+                : DEFAULT_VISIBLE_COLUMNS.customer;
+
+          const billingVal =
+            raw.billing !== undefined
+              ? Boolean(raw.billing)
+              : DEFAULT_VISIBLE_COLUMNS.billing;
+
+          const mergedCols: Record<ColumnId, boolean> = {
+            order: raw.order !== undefined ? Boolean(raw.order) : DEFAULT_VISIBLE_COLUMNS.order,
+            customer: customerVal,
+            billing: billingVal,
+            total: raw.total !== undefined ? Boolean(raw.total) : DEFAULT_VISIBLE_COLUMNS.total,
+            category: raw.category !== undefined ? Boolean(raw.category) : DEFAULT_VISIBLE_COLUMNS.category,
+            status_change: raw.status_change !== undefined ? Boolean(raw.status_change) : DEFAULT_VISIBLE_COLUMNS.status_change,
+            delivered_by: raw.delivered_by !== undefined ? Boolean(raw.delivered_by) : DEFAULT_VISIBLE_COLUMNS.delivered_by,
+            updated_by: raw.updated_by !== undefined ? Boolean(raw.updated_by) : DEFAULT_VISIBLE_COLUMNS.updated_by,
+            ship_to: raw.ship_to !== undefined ? Boolean(raw.ship_to) : DEFAULT_VISIBLE_COLUMNS.ship_to,
+            origin: raw.origin !== undefined ? Boolean(raw.origin) : DEFAULT_VISIBLE_COLUMNS.origin,
+            actions: raw.actions !== undefined ? Boolean(raw.actions) : DEFAULT_VISIBLE_COLUMNS.actions,
+          };
           setVisibleColumns(mergedCols);
           setTempColumns(mergedCols);
         }
@@ -433,10 +483,10 @@ export default function OrdersPage() {
     loadStatusCounts(token);
     fetchOrderCategories(token).then((res) => {
       if (res.success) setCategoryOptions(res.categories || []);
-    }).catch(() => {});
+    }).catch(() => { });
     fetchOrderMonths(token).then((res) => {
       if (res.success) setMonthOptions(res.months || []);
-    }).catch(() => {});
+    }).catch(() => { });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, token, profile]);
 
@@ -682,11 +732,10 @@ export default function OrdersPage() {
 
           {/* Toast Notification */}
           {notification && (
-            <div className={`absolute top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg border text-xs font-medium flex items-center gap-2.5 animate-bounce backdrop-blur-md ${
-              notification.type === "success"
-                ? "bg-emerald-50/95 border-emerald-200 text-emerald-800"
-                : "bg-rose-50/95 border-rose-200 text-rose-800"
-            }`}>
+            <div className={`absolute top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg border text-xs font-medium flex items-center gap-2.5 animate-bounce backdrop-blur-md ${notification.type === "success"
+              ? "bg-emerald-50/95 border-emerald-200 text-emerald-800"
+              : "bg-rose-50/95 border-rose-200 text-rose-800"
+              }`}>
               <span className={`w-2 h-2 rounded-full ${notification.type === "success" ? "bg-emerald-500" : "bg-rose-500"}`}></span>
               <span>{notification.message}</span>
             </div>
@@ -709,87 +758,24 @@ export default function OrdersPage() {
               <span className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200/60 font-mono">
                 Total: <strong className="text-slate-800">{totalOrdersCount.toLocaleString("en-IN")}</strong>
               </span>
-              <button
-                type="button"
-                onClick={toggleScreenOptions}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer font-sans select-none ${
-                  isScreenOptionsOpen
-                    ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                    : "bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border-slate-300 shadow-2xs"
-                }`}
-                title="Toggle Screen Options"
-              >
-                <span>Screen Options</span>
-                <span className="text-[9px]">{isScreenOptionsOpen ? "▲" : "▼"}</span>
-              </button>
+              <ScreenOptionsToggle
+                isOpen={isScreenOptionsOpen}
+                onToggle={toggleScreenOptions}
+              />
             </div>
           </div>
 
           {/* Screen Options Collapsible Drawer */}
-          {isScreenOptionsOpen && (
-            <div className="bg-white border-b border-slate-200 shadow-xs px-6 py-4 shrink-0 z-20 transition-all">
-              <div className="max-w-6xl">
-                <h3 className="text-sm font-bold text-slate-900 mb-2.5 font-sans">Orders</h3>
-
-                {/* Columns Selection */}
-                <div className="mb-4">
-                  <h4 className="text-xs font-bold text-slate-800 mb-2 font-sans">Columns</h4>
-                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                    {AVAILABLE_COLUMNS.map((col) => (
-                      <label
-                        key={col.id}
-                        className="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none hover:text-slate-900 font-sans"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={Boolean(tempColumns[col.id])}
-                          onChange={(e) => {
-                            setTempColumns((prev) => ({
-                              ...prev,
-                              [col.id]: e.target.checked,
-                            }));
-                          }}
-                          className="w-3.5 h-3.5 rounded border-slate-300 text-[#E31E24] focus:ring-red-500 accent-[#E31E24] cursor-pointer"
-                        />
-                        <span className="font-medium">{col.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Pagination Selection */}
-                <div className="mb-4 pt-3 border-t border-slate-100">
-                  <h4 className="text-xs font-bold text-slate-800 mb-1.5 font-sans">Pagination</h4>
-                  <div className="flex items-center gap-2 text-xs text-slate-700 font-sans">
-                    <label htmlFor="screen-options-items-per-page" className="font-medium">
-                      Number of items per page:
-                    </label>
-                    <input
-                      id="screen-options-items-per-page"
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={tempItemsPerPage}
-                      onChange={(e) => setTempItemsPerPage(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleApplyScreenOptions()}
-                      className="w-16 px-2.5 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-[#E31E24] focus:ring-1 focus:ring-red-500 font-mono shadow-2xs"
-                    />
-                  </div>
-                </div>
-
-                {/* Apply Button */}
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleApplyScreenOptions}
-                    className="px-4 py-1.5 bg-[#E31E24] hover:bg-red-700 text-white text-xs font-semibold rounded shadow-xs transition-colors cursor-pointer font-sans"
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          <ScreenOptions
+            isOpen={isScreenOptionsOpen}
+            title="Orders"
+            columns={AVAILABLE_COLUMNS}
+            tempColumns={tempColumns}
+            onToggleColumn={(id, checked) => setTempColumns((prev) => ({ ...prev, [id]: checked }))}
+            tempItemsPerPage={tempItemsPerPage}
+            onTempItemsPerPageChange={setTempItemsPerPage}
+            onApply={handleApplyScreenOptions}
+          />
 
           {/* Scrollable Container */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col">
@@ -805,18 +791,16 @@ export default function OrdersPage() {
                         setSelectedStatus(tab.value);
                         setCurrentPage(1);
                       }}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                        isActive
-                          ? "bg-slate-900 text-white shadow-xs font-semibold"
-                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/90 bg-white border border-slate-200/70"
-                      }`}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${isActive
+                        ? "bg-slate-900 text-white shadow-xs font-semibold"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/90 bg-white border border-slate-200/70"
+                        }`}
                     >
-                      <span>{tab.label}</span>
+                      <span className="capitalize">{tab.label}</span>
                       {tab.count !== undefined && (
                         <span
-                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
-                            isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600 border border-slate-200/50"
-                          }`}
+                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600 border border-slate-200/50"
+                            }`}
                         >
                           {tab.count.toLocaleString("en-IN")}
                         </span>
@@ -827,219 +811,252 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            {/* Modern Filters Area */}
-            <div className="p-6 pb-2">
-              <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-xs flex flex-col gap-4">
-                {/* Row 1: Search & Month Selector */}
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                  {/* Left: Month quick filter */}
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <select
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="appearance-none bg-slate-50 hover:bg-white border border-slate-200/90 rounded-lg pl-8 pr-8 py-1.5 text-xs text-slate-700 font-sans outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] transition-all cursor-pointer"
-                      >
-                        <option value="0">All dates</option>
-                        {monthOptions.map((m) => (
-                          <option key={m.value} value={m.value}>{m.label}</option>
-                        ))}
-                      </select>
-                      <svg className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <svg className="w-3 h-3 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
-                    <button
-                      onClick={handleApplyMonthFilter}
-                      className="text-xs font-semibold text-[#E31E24] bg-red-50 hover:bg-red-100/80 border border-red-200/80 px-3 py-1.5 rounded-lg transition-colors font-sans whitespace-nowrap cursor-pointer"
-                    >
-                      Apply Month
-                    </button>
-                  </div>
+            {/* Filter Toggle & Quick Search Bar (Always visible) */}
+            <div className="px-6 pt-3 pb-2 shrink-0">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                {/* Left: Filter Toggle Button + Active Count Badge + Clear Button */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterOpen((prev) => !prev)}
+                    className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer font-sans shadow-2xs ${isFilterOpen
+                      ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                      : activeFiltersCount > 0
+                        ? "bg-red-50 text-[#E31E24] border-red-300 hover:bg-red-100/80"
+                        : "bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border-slate-300"
+                      }`}
+                    title="Toggle Filter Options"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                    </svg>
+                    <span>Filters</span>
+                    {activeFiltersCount > 0 && (
+                      <span className="min-w-4 h-4 px-1 rounded-full bg-[#E31E24] text-white text-[10px] flex items-center justify-center font-bold font-mono">
+                        {activeFiltersCount}
+                      </span>
+                    )}
+                    <span className="text-[9px] ml-0.5">{isFilterOpen ? "▲" : "▼"}</span>
+                  </button>
 
-                  {/* Right: Search Input + Category dropdown + Search CTA */}
-                  <div className="flex items-center gap-2 w-full lg:w-auto">
-                    <div className="relative flex-1 lg:w-64">
-                      <svg className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                      <input
-                        type="text"
-                        placeholder="Search by order ID, name, email..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && triggerApplyFilters()}
-                        className="w-full pl-9 pr-3 py-1.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200/90 rounded-lg text-xs text-slate-800 outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] transition-all font-sans"
-                      />
-                    </div>
-                    <select
-                      value={searchType}
-                      onChange={(e) => setSearchType(e.target.value)}
-                      className="bg-slate-50 hover:bg-white border border-slate-200/90 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-sans outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] transition-all"
-                    >
-                      <option value="all">All Fields</option>
-                      <option value="id">Order ID</option>
-                      <option value="email">Email</option>
-                    </select>
+                  {activeFiltersCount > 0 && (
                     <button
-                      onClick={triggerApplyFilters}
-                      className="text-xs font-semibold text-white bg-[#E31E24] hover:bg-red-700 px-4 py-1.5 rounded-lg shadow-xs transition-colors font-sans whitespace-nowrap cursor-pointer flex items-center gap-1.5"
+                      type="button"
+                      onClick={clearFilters}
+                      className="text-xs font-medium text-slate-500 hover:text-red-600 hover:underline px-2 py-1 rounded transition-colors font-sans cursor-pointer flex items-center gap-1"
                     >
-                      <span>Search</span>
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      <span>Clear All Filters</span>
                     </button>
-                  </div>
+                  )}
                 </div>
 
-                {/* Row 2: Advanced filters */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 pt-3 border-t border-slate-100">
-                  {/* Date range filter */}
-                  <div className="border border-slate-200/80 rounded-lg p-3 bg-slate-50/50 flex flex-col gap-2 min-w-0">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">Date Range</span>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="flex-1 min-w-0 bg-white border border-slate-200 px-2 py-1 text-xs rounded-md outline-none focus:border-[#E31E24] font-sans"
-                      />
-                      <span className="text-slate-400 text-xs shrink-0">—</span>
-                      <input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="flex-1 min-w-0 bg-white border border-slate-200 px-2 py-1 text-xs rounded-md outline-none focus:border-[#E31E24] font-sans"
-                      />
+                {/* Right: Quick Search input + dropdown + Search CTA */}
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="relative flex-1 sm:w-64">
+                    <svg className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Search by order ID, name, email..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && triggerApplyFilters()}
+                      className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] transition-all font-sans shadow-2xs"
+                    />
+                  </div>
+                  <select
+                    value={searchType}
+                    onChange={(e) => setSearchType(e.target.value)}
+                    className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-sans outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] transition-all shadow-2xs"
+                  >
+                    <option value="all">All Fields</option>
+                    <option value="id">Order ID</option>
+                    <option value="email">Email</option>
+                  </select>
+                  <button
+                    onClick={triggerApplyFilters}
+                    className="text-xs font-semibold text-white bg-[#E31E24] hover:bg-red-700 px-4 py-1.5 rounded-lg shadow-xs transition-colors font-sans whitespace-nowrap cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>Search</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Collapsible Distinctly Styled Filter Panel */}
+            {isFilterOpen && (
+              <div className="px-6 pb-2 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="bg-gradient-to-r from-slate-100/95 via-slate-50 to-slate-100/95 border border-slate-200/90 border-l-4 border-l-[#E31E24] rounded-xl p-4 shadow-sm flex flex-col gap-3">
+                  {/* Top Header of Filter Panel: Title + Month quick filter + Close button */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-200/80">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-[#E31E24]"></span>
+                      <h4 className="text-xs font-bold text-slate-800 font-sans tracking-tight">Filter Options</h4>
+                      {activeFiltersCount > 0 && (
+                        <span className="text-[10px] font-semibold text-[#E31E24] bg-red-50 border border-red-200 px-2 py-0.5 rounded-full font-mono">
+                          {activeFiltersCount} active
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
+
+                    <div className="flex items-center gap-2">
+                      {/* Month quick filter */}
+                      <div className="flex items-center gap-1.5">
+                        <div className="relative">
+                          <select
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="appearance-none bg-white hover:bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-7 py-1 text-xs text-slate-700 font-sans outline-none focus:ring-1 focus:ring-red-500 focus:border-[#E31E24] cursor-pointer shadow-2xs"
+                          >
+                            <option value="0">All dates</option>
+                            {monthOptions.map((m) => (
+                              <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                          </select>
+                          <svg className="w-3 h-3 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <svg className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                        <button
+                          onClick={handleApplyMonthFilter}
+                          className="text-xs font-semibold text-[#E31E24] bg-white hover:bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg transition-colors font-sans whitespace-nowrap cursor-pointer shadow-2xs"
+                        >
+                          Apply Month
+                        </button>
+                      </div>
+
                       <button
-                        onClick={triggerApplyFilters}
-                        className="text-[11px] font-semibold text-white bg-slate-900 hover:bg-slate-800 px-3 py-1 rounded-md shadow-2xs font-sans cursor-pointer"
+                        type="button"
+                        onClick={() => setIsFilterOpen(false)}
+                        className="text-slate-400 hover:text-slate-700 p-1 rounded-md text-xs cursor-pointer ml-1"
+                        title="Close filters"
                       >
-                        Apply
-                      </button>
-                      <button
-                        onClick={clearFilters}
-                        className="text-[11px] font-semibold text-slate-600 border border-slate-200 hover:bg-slate-100 px-3 py-1 rounded-md shadow-2xs font-sans cursor-pointer"
-                      >
-                        Clear
+                        ✕
                       </button>
                     </div>
                   </div>
 
-                  {/* Category Filter */}
-                  <div className="border border-slate-200/80 rounded-lg p-3 bg-slate-50/50 flex flex-col gap-2 min-w-0">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">Category Filter</span>
-                    {selectedCategories.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {selectedCategories.map((cat) => (
-                          <span
-                            key={cat}
-                            className="inline-flex items-center gap-1 bg-red-50 text-[#E31E24] border border-red-200 text-[10px] font-sans px-2 py-0.5 rounded-md"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => removeCategory(cat)}
-                              className="text-red-400 hover:text-red-700 font-bold leading-none cursor-pointer"
-                            >
-                              ×
-                            </button>
-                            {cat}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <div className="relative w-full" ref={categoryDropdownRef}>
+                  {/* Advanced filters */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                    {/* Date range filter */}
+                    <div className="border border-slate-200/80 rounded-lg p-3 bg-slate-50/50 flex flex-col gap-2 min-w-0">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">Date Range</span>
+                      <div className="flex items-center gap-1.5 min-w-0">
                         <input
-                          type="text"
-                          placeholder="Filter by Category"
-                          value={categorySearchText}
-                          onChange={(e) => setCategorySearchText(e.target.value)}
-                          onFocus={() => setIsCategoryDropdownOpen(true)}
-                          className="w-full bg-white border border-slate-200 px-2.5 py-1 text-xs rounded-md outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans"
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="flex-1 min-w-0 bg-white border border-slate-200 px-2 py-1 text-xs rounded-md outline-none focus:border-[#E31E24] font-sans"
                         />
-                        {isCategoryDropdownOpen && (
-                          <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
-                            {filteredCategoryOptions.length === 0 ? (
-                              <div className="px-3 py-2 text-xs text-slate-400 font-sans">No categories found.</div>
-                            ) : (
-                              filteredCategoryOptions.map((cat) => {
-                                const isSelected = selectedCategories.includes(cat);
-                                return (
-                                  <button
-                                    key={cat}
-                                    type="button"
-                                    onClick={() => toggleCategory(cat)}
-                                    className={`w-full text-left px-3 py-1.5 text-xs font-sans transition-colors flex items-center gap-2 ${
-                                      isSelected
+                        <span className="text-slate-400 text-xs shrink-0">—</span>
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="flex-1 min-w-0 bg-white border border-slate-200 px-2 py-1 text-xs rounded-md outline-none focus:border-[#E31E24] font-sans"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <button
+                          onClick={triggerApplyFilters}
+                          className="text-[11px] font-semibold text-white bg-slate-900 hover:bg-slate-800 px-3 py-1 rounded-md shadow-2xs font-sans cursor-pointer"
+                        >
+                          Apply
+                        </button>
+                        <button
+                          onClick={clearFilters}
+                          className="text-[11px] font-semibold text-slate-600 border border-slate-200 hover:bg-slate-100 px-3 py-1 rounded-md shadow-2xs font-sans cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Category Filter */}
+                    <div className="border border-slate-200/80 rounded-lg p-3 bg-slate-50/50 flex flex-col gap-2 min-w-0">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">Category Filter</span>
+                      {selectedCategories.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {selectedCategories.map((cat) => (
+                            <span
+                              key={cat}
+                              className="inline-flex items-center gap-1 bg-red-50 text-[#E31E24] border border-red-200 text-[10px] font-sans px-2 py-0.5 rounded-md"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => removeCategory(cat)}
+                                className="text-red-400 hover:text-red-700 font-bold leading-none cursor-pointer"
+                              >
+                                ×
+                              </button>
+                              {cat}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <div className="relative w-full" ref={categoryDropdownRef}>
+                          <input
+                            type="text"
+                            placeholder="Filter by Category"
+                            value={categorySearchText}
+                            onChange={(e) => setCategorySearchText(e.target.value)}
+                            onFocus={() => setIsCategoryDropdownOpen(true)}
+                            className="w-full bg-white border border-slate-200 px-2.5 py-1 text-xs rounded-md outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans"
+                          />
+                          {isCategoryDropdownOpen && (
+                            <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
+                              {filteredCategoryOptions.length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-slate-400 font-sans">No categories found.</div>
+                              ) : (
+                                filteredCategoryOptions.map((cat) => {
+                                  const isSelected = selectedCategories.includes(cat);
+                                  return (
+                                    <button
+                                      key={cat}
+                                      type="button"
+                                      onClick={() => toggleCategory(cat)}
+                                      className={`w-full text-left px-3 py-1.5 text-xs font-sans transition-colors flex items-center gap-2 ${isSelected
                                         ? "bg-red-50 text-[#E31E24] font-semibold"
                                         : "text-slate-700 hover:bg-slate-50"
-                                    }`}
-                                  >
-                                    <span className={`w-3 h-3 rounded-sm border shrink-0 ${isSelected ? "bg-[#E31E24] border-[#E31E24]" : "border-slate-300"}`} />
-                                    {cat}
-                                  </button>
-                                );
-                              })
-                            )}
-                          </div>
-                        )}
+                                        }`}
+                                    >
+                                      <span className={`w-3 h-3 rounded-sm border shrink-0 ${isSelected ? "bg-[#E31E24] border-[#E31E24]" : "border-slate-300"}`} />
+                                      {cat}
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={triggerApplyFilters}
+                          className="text-[11px] font-semibold text-[#E31E24] bg-white border border-red-200 hover:bg-red-50 px-3 py-1 rounded-md transition-colors font-sans whitespace-nowrap cursor-pointer"
+                        >
+                          Filter
+                        </button>
                       </div>
-                      <button
-                        onClick={triggerApplyFilters}
-                        className="text-[11px] font-semibold text-[#E31E24] bg-white border border-red-200 hover:bg-red-50 px-3 py-1 rounded-md transition-colors font-sans whitespace-nowrap cursor-pointer"
-                      >
-                        Filter
-                      </button>
                     </div>
-                  </div>
 
-                  {/* Payment Type Filter */}
-                  <div className="border border-slate-200/80 rounded-lg p-3 bg-slate-50/50 flex flex-col gap-2 min-w-0">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">Payment Type</span>
-                    <select
-                      value={paymentMethodInput}
-                      onChange={(e) => setPaymentMethodInput(e.target.value)}
-                      className="w-full bg-white border border-slate-200 px-2.5 py-1 text-xs rounded-md outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans"
-                    >
-                      <option value="">Payment Type (All)</option>
-                      <option value="cod">Cash on Delivery (COD)</option>
-                      <option value="prepaid">Prepaid</option>
-                    </select>
-                    <button
-                      onClick={triggerApplyFilters}
-                      className="text-[11px] font-semibold text-[#E31E24] bg-white border border-red-200 hover:bg-red-50 px-3 py-1 rounded-md transition-colors font-sans whitespace-nowrap self-start cursor-pointer"
-                    >
-                      Filter
-                    </button>
-                  </div>
-
-                  {/* Demand Type Filter */}
-                  {(canViewHandwrittenScanCopy(profile) ||
-                    canViewHandwrittenHardCopy(profile) ||
-                    canViewAssignmentNotAvailable(profile)) && (
+                    {/* Payment Type Filter */}
                     <div className="border border-slate-200/80 rounded-lg p-3 bg-slate-50/50 flex flex-col gap-2 min-w-0">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">Demand Type</span>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">Payment Type</span>
                       <select
-                        name="demand_type_filter"
-                        id="demand_type_filter"
-                        value={demandTypeInput}
-                        onChange={(e) => setDemandTypeInput(e.target.value)}
+                        value={paymentMethodInput}
+                        onChange={(e) => setPaymentMethodInput(e.target.value)}
                         className="w-full bg-white border border-slate-200 px-2.5 py-1 text-xs rounded-md outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans"
                       >
-                        <option value="">Select Demand Type</option>
-                        {canViewHandwrittenScanCopy(profile) && (
-                          <option value="Handwritten Scan Copy">Handwritten Scan Copy</option>
-                        )}
-                        {canViewHandwrittenHardCopy(profile) && (
-                          <option value="Handwritten Hard Copy Via Courier">Handwritten Hard Copy Via Courier</option>
-                        )}
-                        {canViewAssignmentNotAvailable(profile) && (
-                          <option value="1">Not Available</option>
-                        )}
+                        <option value="">Payment Type (All)</option>
+                        <option value="cod">Cash on Delivery (COD)</option>
+                        <option value="prepaid">Prepaid</option>
                       </select>
                       <button
                         onClick={triggerApplyFilters}
@@ -1048,10 +1065,43 @@ export default function OrdersPage() {
                         Filter
                       </button>
                     </div>
-                  )}
+
+                    {/* Demand Type Filter */}
+                    {(canViewHandwrittenScanCopy(profile) ||
+                      canViewHandwrittenHardCopy(profile) ||
+                      canViewAssignmentNotAvailable(profile)) && (
+                        <div className="border border-slate-200/80 rounded-lg p-3 bg-slate-50/50 flex flex-col gap-2 min-w-0">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">Demand Type</span>
+                          <select
+                            name="demand_type_filter"
+                            id="demand_type_filter"
+                            value={demandTypeInput}
+                            onChange={(e) => setDemandTypeInput(e.target.value)}
+                            className="w-full bg-white border border-slate-200 px-2.5 py-1 text-xs rounded-md outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] font-sans"
+                          >
+                            <option value="">Select Demand Type</option>
+                            {canViewHandwrittenScanCopy(profile) && (
+                              <option value="Handwritten Scan Copy">Handwritten Scan Copy</option>
+                            )}
+                            {canViewHandwrittenHardCopy(profile) && (
+                              <option value="Handwritten Hard Copy Via Courier">Handwritten Hard Copy Via Courier</option>
+                            )}
+                            {canViewAssignmentNotAvailable(profile) && (
+                              <option value="1">Not Available</option>
+                            )}
+                          </select>
+                          <button
+                            onClick={triggerApplyFilters}
+                            className="text-[11px] font-semibold text-[#E31E24] bg-white border border-red-200 hover:bg-red-50 px-3 py-1 rounded-md transition-colors font-sans whitespace-nowrap self-start cursor-pointer"
+                          >
+                            Filter
+                          </button>
+                        </div>
+                      )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Main Table Area */}
             <div className="p-6 pt-3 flex-1 flex flex-col">
@@ -1083,7 +1133,7 @@ export default function OrdersPage() {
                     <thead>
                       <tr className="bg-slate-50/95 sticky top-0 z-10 border-b border-slate-200/80 text-slate-500 font-semibold text-[11px] uppercase tracking-wider backdrop-blur-xs">
                         {visibleColumns.order && (
-                          <th className="py-3 px-4 font-bold min-w-[200px]">
+                          <th className="py-3 px-3.5 font-bold whitespace-nowrap min-w-[150px]">
                             <div className="flex items-center gap-2">
                               <input
                                 type="checkbox"
@@ -1099,54 +1149,40 @@ export default function OrdersPage() {
                             </div>
                           </th>
                         )}
-                        {visibleColumns.date && (
-                          <th className="py-3 px-4 font-bold whitespace-nowrap">
-                            <span className="inline-flex items-center gap-1">
-                              <span>Date</span>
-                              <span className="text-slate-400 text-[10px]">⬍</span>
-                            </span>
-                          </th>
-                        )}
-                        {visibleColumns.status && (
-                          <th className="py-3 px-4 font-bold whitespace-nowrap">Status</th>
+                        {visibleColumns.customer && (
+                          <th className="py-3 px-3.5 font-bold whitespace-nowrap min-w-[190px]">Customer & Contact</th>
                         )}
                         {visibleColumns.billing && (
                           <th className="py-3 px-4 font-bold min-w-[180px]">Billing</th>
                         )}
-                        {visibleColumns.ship_to && (
-                          <th className="py-3 px-4 font-bold min-w-[180px]">Ship to</th>
-                        )}
                         {visibleColumns.total && (
-                          <th className="py-3 px-4 font-bold whitespace-nowrap">
+                          <th className="py-3 px-3.5 font-bold whitespace-nowrap min-w-[110px]">
                             <span className="inline-flex items-center gap-1">
                               <span>Total</span>
                               <span className="text-slate-400 text-[10px]">⬍</span>
                             </span>
                           </th>
                         )}
-                        {visibleColumns.actions && (
-                          <th className="py-3 px-4 font-bold whitespace-nowrap text-center">Actions</th>
-                        )}
                         {visibleColumns.category && (
-                          <th className="py-3 px-4 font-bold min-w-[180px]">Category</th>
-                        )}
-                        {visibleColumns.mobile && (
-                          <th className="py-3 px-4 font-bold whitespace-nowrap">Mobile</th>
-                        )}
-                        {visibleColumns.email && (
-                          <th className="py-3 px-4 font-bold min-w-[180px]">Email</th>
-                        )}
-                        {visibleColumns.updated_by && (
-                          <th className="py-3 px-4 font-bold min-w-[160px]">Updated By</th>
-                        )}
-                        {visibleColumns.delivered_by && (
-                          <th className="py-3 px-4 font-bold whitespace-nowrap">Delivered By</th>
+                          <th className="py-3 px-3.5 font-bold min-w-[150px] max-w-[200px]">Category</th>
                         )}
                         {visibleColumns.status_change && (
-                          <th className="py-3 px-4 font-bold w-[130px] whitespace-nowrap">Status Change</th>
+                          <th className="py-3 px-3 font-bold w-[115px] whitespace-nowrap">Status Change</th>
+                        )}
+                        {visibleColumns.delivered_by && (
+                          <th className="py-3 px-3.5 font-bold whitespace-nowrap min-w-[110px]">Delivered By</th>
+                        )}
+                        {visibleColumns.updated_by && (
+                          <th className="py-3 px-3.5 font-bold whitespace-nowrap min-w-[120px]">Updated By</th>
+                        )}
+                        {visibleColumns.ship_to && (
+                          <th className="py-3 px-4 font-bold min-w-[180px]">Ship to</th>
                         )}
                         {visibleColumns.origin && (
-                          <th className="py-3 px-4 font-bold whitespace-nowrap text-right w-[90px] pr-6">Origin</th>
+                          <th className="py-3 px-3.5 font-bold whitespace-nowrap text-right w-[90px] pr-6">Origin</th>
+                        )}
+                        {visibleColumns.actions && (
+                          <th className="py-3 px-3.5 font-bold whitespace-nowrap text-center">Actions</th>
                         )}
                       </tr>
                     </thead>
@@ -1172,6 +1208,7 @@ export default function OrdersPage() {
                             order.shipping_lines?.some((sl) => /same\s*day/i.test(sl.method_title || sl.method_id || ""))
                           );
                           const badge = getStatusBadge(order.status);
+                          const isSelected = selectedOrderIds.includes(order.id);
 
                           return (
                             <tr
@@ -1192,54 +1229,69 @@ export default function OrdersPage() {
                                   window.open(`/orders/${order.id}`, "_blank");
                                 }
                               }}
-                              className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                              className={`transition-colors cursor-pointer group ${isSelected ? "bg-red-50/50 hover:bg-red-50/70" : "hover:bg-slate-50/80"
+                                }`}
                             >
-                              {/* 1. Order */}
+                              {/* 1. Order & Date */}
                               {visibleColumns.order && (
-                                <td className="py-3 px-4 font-sans min-w-[200px]">
+                                <td className="py-2.5 px-3.5 font-sans min-w-[150px] align-middle">
                                   <div className="flex items-start gap-2.5">
                                     <input
                                       type="checkbox"
-                                      checked={selectedOrderIds.includes(order.id)}
+                                      checked={isSelected}
                                       onClick={(e) => e.stopPropagation()}
                                       onChange={() => handleToggleSelectOrder(order.id)}
-                                      className="w-3.5 h-3.5 mt-0.5 rounded border-slate-300 text-[#E31E24] focus:ring-red-500 accent-[#E31E24] cursor-pointer"
+                                      className="w-3.5 h-3.5 mt-1 rounded border-slate-300 text-[#E31E24] focus:ring-red-500 accent-[#E31E24] cursor-pointer shrink-0"
                                     />
-                                    <div className="flex flex-col items-start gap-0.5">
+                                    <div className="flex flex-col min-w-0">
                                       <div className="flex items-center gap-1.5 flex-wrap">
                                         <Link
                                           href={`/orders/${order.id}`}
                                           onClick={(e) => e.stopPropagation()}
-                                          className="text-[#E31E24] font-bold group-hover:underline"
+                                          className="text-[#E31E24] font-bold text-xs hover:underline flex items-center gap-1"
                                         >
                                           #{order.id}
                                         </Link>
                                         <Link
                                           href={`/orders/${order.id}`}
                                           onClick={(e) => e.stopPropagation()}
-                                          className="text-slate-800 font-semibold hover:text-[#E31E24] hover:underline"
+                                          title="Open order in new tab"
+                                          target="_blank"
+                                          className="text-slate-400 hover:text-slate-700 transition-colors p-0.5 inline-flex items-center"
                                         >
-                                          {order.billing?.first_name} {order.billing?.last_name}
-                                        </Link>
-                                        <Link
-                                          href={`/orders/${order.id}`}
-                                          onClick={(e) => e.stopPropagation()}
-                                          title="View Order"
-                                          className="text-slate-400 hover:text-slate-700 transition-colors p-0.5 cursor-pointer inline-flex items-center"
-                                        >
-                                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                           </svg>
                                         </Link>
                                       </div>
+
+                                      {/* Order Date */}
+                                      <div
+                                        className="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5 whitespace-nowrap cursor-default"
+                                        title={order.date_created ? parseOrderDateTime(order.date_created).createdFormatted : ""}
+                                      >
+                                        <svg className="w-3 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                        <span>{formatOrderDateAgo(order.date_created)}</span>
+                                      </div>
+
+                                      {/* Status Badge below date */}
+                                      <div className="mt-1">
+                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border font-sans uppercase tracking-wide ${badge.cls}`}>
+                                          <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`}></span>
+                                          <span>{order.status}</span>
+                                        </span>
+                                      </div>
+
+                                      {/* Same Day Delivery Badge */}
                                       {isSameDay && (
                                         <div className="mt-1">
                                           <span
                                             style={{ animation: "sameDayBlink 1s infinite" }}
-                                            className="animate-same-day-blink inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold font-sans bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-2xs"
+                                            className="animate-same-day-blink inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-300 shadow-2xs whitespace-nowrap"
                                           >
-                                            <span className="text-amber-500 text-[10px] leading-none">⚡</span>
+                                            <span>⚡</span>
                                             <span>Same Day Delivery</span>
                                           </span>
                                         </div>
@@ -1249,31 +1301,66 @@ export default function OrdersPage() {
                                 </td>
                               )}
 
-                              {/* 2. Date */}
-                              {visibleColumns.date && (
-                                <td className="py-3 px-4 whitespace-nowrap text-slate-600 font-sans text-xs">
-                                  <span
-                                    title={order.date_created ? parseOrderDateTime(order.date_created).createdFormatted : ""}
-                                    className="cursor-default"
-                                  >
-                                    {formatOrderDateAgo(order.date_created)}
-                                  </span>
+                              {/* 2. Customer & Contact (Name + Mobile + Email) */}
+                              {visibleColumns.customer && (
+                                <td className="py-2.5 px-3.5 font-sans min-w-[190px] max-w-[240px] align-middle">
+                                  <div className="flex flex-col gap-0.5 min-w-0">
+                                    {/* Customer Name */}
+                                    <div className="flex items-center gap-1">
+                                      <span
+                                        className="font-semibold text-slate-800 text-xs truncate"
+                                        title={[order.billing?.first_name, order.billing?.last_name].filter(Boolean).join(" ") || "Guest Customer"}
+                                      >
+                                        {[order.billing?.first_name, order.billing?.last_name].filter(Boolean).join(" ") || (
+                                          <span className="text-slate-400 italic font-normal">Guest Customer</span>
+                                        )}
+                                      </span>
+                                    </div>
+
+                                    {/* Mobile */}
+                                    {order.billing?.phone ? (
+                                      <div className="flex items-center gap-1.5 text-[11px] text-slate-700 font-mono">
+                                        <svg className="w-3 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                        </svg>
+                                        <a
+                                          href={`tel:${order.billing.phone}`}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="hover:text-[#E31E24] hover:underline"
+                                          title={`Call ${order.billing.phone}`}
+                                        >
+                                          {order.billing.phone}
+                                        </a>
+                                      </div>
+                                    ) : null}
+
+                                    {/* Email */}
+                                    {order.billing?.email ? (
+                                      <div className="flex items-center gap-1.5 text-[11px] text-slate-500 min-w-0">
+                                        <svg className="w-3 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                        </svg>
+                                        <a
+                                          href={`mailto:${order.billing.email}`}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="truncate lowercase hover:text-[#E31E24] hover:underline"
+                                          title={order.billing.email}
+                                        >
+                                          {order.billing.email}
+                                        </a>
+                                      </div>
+                                    ) : null}
+
+                                    {!order.billing?.phone && !order.billing?.email && (
+                                      <span className="text-slate-300 text-[11px]">—</span>
+                                    )}
+                                  </div>
                                 </td>
                               )}
 
-                              {/* 3. Status */}
-                              {visibleColumns.status && (
-                                <td className="py-3 px-4 whitespace-nowrap">
-                                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border font-sans uppercase tracking-wide ${badge.cls}`}>
-                                    <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`}></span>
-                                    <span>{order.status}</span>
-                                  </span>
-                                </td>
-                              )}
-
-                              {/* 4. Billing */}
+                              {/* 3. Billing */}
                               {visibleColumns.billing && (
-                                <td className="py-3 px-4 font-sans text-xs text-slate-600 min-w-[180px]">
+                                <td className="py-3 px-4 font-sans text-xs text-slate-600 min-w-[180px] align-middle">
                                   <div className="flex flex-col gap-0.5 leading-snug">
                                     {(order.billing?.first_name || order.billing?.last_name) && (
                                       <span className="font-semibold text-slate-800">
@@ -1306,126 +1393,72 @@ export default function OrdersPage() {
                                 </td>
                               )}
 
-                              {/* 5. Ship to */}
-                              {visibleColumns.ship_to && (
-                                <td className="py-3 px-4 font-sans text-xs text-slate-600 min-w-[180px]">
-                                  <div className="flex flex-col gap-0.5 leading-snug">
-                                    {(order.shipping?.first_name || order.shipping?.last_name || order.shipping?.address_1) ? (
-                                      <>
-                                        <span className="font-semibold text-slate-800">
-                                          {order.shipping.first_name} {order.shipping.last_name}
-                                        </span>
-                                        {order.shipping.address_1 && (
-                                          <span>{order.shipping.address_1}{order.shipping.address_2 ? `, ${order.shipping.address_2}` : ""}</span>
-                                        )}
-                                        {(order.shipping?.city || order.shipping?.state || order.shipping?.postcode) && (
-                                          <span className="text-[11px] text-slate-500">
-                                            {[order.shipping?.city, order.shipping?.state, order.shipping?.postcode].filter(Boolean).join(", ")}
-                                          </span>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <span className="text-slate-400 text-[11px] italic">Same as billing</span>
-                                    )}
-                                  </div>
-                                </td>
-                              )}
-
-                              {/* 6. Total */}
+                              {/* 4. Total & Payment */}
                               {visibleColumns.total && (
-                                <td className="py-3 px-4 text-slate-900 font-bold font-mono text-xs whitespace-nowrap">
-                                  ₹{parseFloat(order.total).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                                </td>
-                              )}
-
-                              {/* 7. Actions */}
-                              {visibleColumns.actions && (
-                                <td className="py-3 px-4 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex items-center justify-center gap-1.5">
-                                    <Link
-                                      href={`/orders/${order.id}`}
-                                      title="View Order Details"
-                                      className="px-2.5 py-1 text-slate-700 hover:text-white bg-slate-100 hover:bg-slate-900 rounded-md text-[11px] font-semibold transition-colors font-sans cursor-pointer flex items-center gap-1"
-                                    >
-                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                      </svg>
-                                      <span>View</span>
-                                    </Link>
+                                <td className="py-2.5 px-3.5 font-sans whitespace-nowrap align-middle">
+                                  <div className="flex flex-col items-start gap-0.5">
+                                    <span className="text-slate-900 font-bold font-mono text-xs">
+                                      ₹{parseFloat(order.total || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </span>
+                                    {(() => {
+                                      const method = (order.payment_method_title || order.payment_method || "").trim();
+                                      if (!method) return null;
+                                      const isCod = /cod|cash\s*on\s*delivery/i.test(method);
+                                      const isPrepaid = /prepaid|razorpay|upi|online/i.test(method);
+                                      return (
+                                        <span
+                                          className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider border ${isCod
+                                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                                            : isPrepaid
+                                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                              : "bg-slate-50 text-slate-600 border-slate-200"
+                                            }`}
+                                          title={`Payment method: ${method}`}
+                                        >
+                                          {isCod ? "COD" : isPrepaid ? "Prepaid" : method}
+                                        </span>
+                                      );
+                                    })()}
                                   </div>
                                 </td>
                               )}
 
-                              {/* 8. Category */}
+                              {/* 5. Category */}
                               {visibleColumns.category && (
-                                <td className="py-3 px-4 text-slate-600 font-sans min-w-[180px] break-words whitespace-normal leading-snug">
-                                  {order.categories || "—"}
-                                </td>
-                              )}
-
-                              {/* 9. Mobile */}
-                              {visibleColumns.mobile && (
-                                <td className="py-3 px-4 font-sans text-slate-800 font-mono text-xs whitespace-nowrap">
-                                  {order.billing?.phone || "—"}
-                                </td>
-                              )}
-
-                              {/* 10. Email */}
-                              {visibleColumns.email && (
-                                <td className="py-3 px-4 font-sans text-slate-600 text-xs min-w-[180px] lowercase break-all">
-                                  {order.billing?.email || "—"}
-                                </td>
-                              )}
-
-                              {/* 11. Updated by */}
-                              {visibleColumns.updated_by && (
-                                <td className="py-3 px-4 font-sans min-w-[160px]">
-                                  {order.display_name || order.updated_by ? (
-                                    <span className="inline-flex items-center gap-1.5 font-medium text-slate-700 text-xs">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                      {order.display_name || order.updated_by}
-                                    </span>
+                                <td className="py-2.5 px-3.5 text-slate-600 font-sans min-w-[150px] max-w-[200px] align-middle">
+                                  {order.categories ? (
+                                    <div className="flex flex-wrap gap-1 items-center" title={order.categories}>
+                                      {order.categories.split(",").slice(0, 2).map((cat, idx) => (
+                                        <span
+                                          key={idx}
+                                          className="inline-block bg-slate-100/90 text-slate-700 border border-slate-200/60 rounded px-1.5 py-0.5 text-[10px] font-medium truncate max-w-[140px]"
+                                        >
+                                          {cat.trim()}
+                                        </span>
+                                      ))}
+                                      {order.categories.split(",").length > 2 && (
+                                        <span className="text-[10px] text-slate-400 font-semibold px-1">
+                                          +{order.categories.split(",").length - 2}
+                                        </span>
+                                      )}
+                                    </div>
                                   ) : (
-                                    <span className="text-slate-300">—</span>
+                                    <span className="text-slate-300 text-xs">—</span>
                                   )}
                                 </td>
                               )}
 
-                              {/* 12. Delivered by */}
-                              {visibleColumns.delivered_by && (
-                                <td className="py-3 px-4 font-sans whitespace-nowrap">
-                                  {order.delivered_by ? (
-                                    <span
-                                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border font-sans uppercase tracking-wide ${
-                                        order.delivered_by === "Shiprocket"
-                                          ? "bg-purple-50 text-purple-700 border-purple-200/80"
-                                          : order.delivered_by === "TekiPost"
-                                          ? "bg-blue-50 text-blue-700 border-blue-200/80"
-                                          : order.delivered_by === "DTDC"
-                                          ? "bg-red-50 text-red-700 border-red-200/80"
-                                          : "bg-slate-100 text-slate-700 border-slate-200"
-                                      }`}
-                                    >
-                                      {order.delivered_by}
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-300">—</span>
-                                  )}
-                                </td>
-                              )}
-
-                              {/* 13. Status Change */}
+                              {/* 6. Status Change */}
                               {visibleColumns.status_change && (
-                                <td className="py-3 px-4 w-[130px]" onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex flex-col items-stretch gap-1 w-[120px]">
+                                <td className="py-2.5 px-3 w-[115px] align-middle" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex flex-col items-stretch gap-1 w-[105px]">
                                     <select
                                       value={rowStatusActions[order.id] || order.status}
                                       onChange={(e) => {
                                         const val = e.target.value;
-                                        setRowStatusActions(prev => ({ ...prev, [order.id]: val }));
+                                        setRowStatusActions((prev) => ({ ...prev, [order.id]: val }));
                                       }}
-                                      className="w-full bg-slate-50 hover:bg-white border border-slate-200 rounded-md px-2 py-1 text-[11px] text-slate-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24]"
+                                      className="w-full bg-white hover:bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-[11px] text-slate-700 font-sans outline-none focus:ring-1 focus:ring-[#E31E24] focus:border-[#E31E24] shadow-2xs"
                                     >
                                       {statusList.map((s) => (
                                         <option key={s.value} value={s.value}>{s.label}</option>
@@ -1452,9 +1485,91 @@ export default function OrdersPage() {
                                 </td>
                               )}
 
-                              {/* 14. Origin */}
+                              {/* 7. Delivered by */}
+                              {visibleColumns.delivered_by && (
+                                <td className="py-2.5 px-3.5 font-sans whitespace-nowrap align-middle">
+                                  {order.delivered_by ? (
+                                    <span
+                                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wide ${order.delivered_by === "Shiprocket"
+                                        ? "bg-purple-50 text-purple-700 border-purple-200"
+                                        : order.delivered_by === "TekiPost"
+                                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                                          : order.delivered_by === "DTDC"
+                                            ? "bg-red-50 text-red-700 border-red-200"
+                                            : "bg-slate-100 text-slate-700 border-slate-200"
+                                        }`}
+                                    >
+                                      {order.delivered_by}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300 text-xs">—</span>
+                                  )}
+                                </td>
+                              )}
+
+                              {/* 8. Updated by */}
+                              {visibleColumns.updated_by && (
+                                <td className="py-2.5 px-3.5 font-sans whitespace-nowrap min-w-[120px] align-middle">
+                                  {order.display_name || order.updated_by ? (
+                                    <span className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-medium">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                                      <span className="truncate max-w-[110px]" title={order.display_name || order.updated_by}>
+                                        {order.display_name || order.updated_by}
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300 text-xs">—</span>
+                                  )}
+                                </td>
+                              )}
+
+                              {/* 10. Ship to */}
+                              {visibleColumns.ship_to && (
+                                <td className="py-3 px-4 font-sans text-xs text-slate-600 min-w-[180px] align-middle">
+                                  <div className="flex flex-col gap-0.5 leading-snug">
+                                    {(order.shipping?.first_name || order.shipping?.last_name || order.shipping?.address_1) ? (
+                                      <>
+                                        <span className="font-semibold text-slate-800">
+                                          {order.shipping.first_name} {order.shipping.last_name}
+                                        </span>
+                                        {order.shipping.address_1 && (
+                                          <span>{order.shipping.address_1}{order.shipping.address_2 ? `, ${order.shipping.address_2}` : ""}</span>
+                                        )}
+                                        {(order.shipping?.city || order.shipping?.state || order.shipping?.postcode) && (
+                                          <span className="text-[11px] text-slate-500">
+                                            {[order.shipping?.city, order.shipping?.state, order.shipping?.postcode].filter(Boolean).join(", ")}
+                                          </span>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <span className="text-slate-400 text-[11px] italic">Same as billing</span>
+                                    )}
+                                  </div>
+                                </td>
+                              )}
+
+                              {/* 11. Origin */}
                               {visibleColumns.origin && (
-                                <td className="py-3 px-4 text-slate-500 font-sans whitespace-nowrap text-right w-[90px] pr-6">{order.origin || "—"}</td>
+                                <td className="py-2.5 px-3.5 text-slate-500 font-sans whitespace-nowrap text-right w-[90px] pr-6 align-middle">
+                                  {order.origin || "—"}
+                                </td>
+                              )}
+
+                              {/* 12. Actions */}
+                              {visibleColumns.actions && (
+                                <td className="py-2.5 px-3.5 whitespace-nowrap text-center align-middle" onClick={(e) => e.stopPropagation()}>
+                                  <Link
+                                    href={`/orders/${order.id}`}
+                                    title="View Order Details"
+                                    className="px-2.5 py-1 text-slate-700 hover:text-white bg-slate-100 hover:bg-slate-900 rounded-md text-[11px] font-semibold transition-colors font-sans cursor-pointer inline-flex items-center gap-1"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                    <span>View</span>
+                                  </Link>
+                                </td>
                               )}
                             </tr>
                           );
@@ -1465,35 +1580,15 @@ export default function OrdersPage() {
                 </div>
 
                 {/* Pagination Footer */}
-                <div className="bg-slate-50/70 border-t border-slate-200/80 py-3.5 px-6 flex items-center justify-between shrink-0">
-                  <div className="text-xs text-slate-500 font-sans font-medium">
-                    Showing <span className="font-semibold text-slate-900">{orders.length}</span> of <span className="font-semibold text-slate-900">{totalItems.toLocaleString("en-IN")}</span> orders
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-40 border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs transition-colors font-sans cursor-pointer disabled:cursor-not-allowed flex items-center gap-1"
-                    >
-                      <span>‹</span>
-                      <span>Previous</span>
-                    </button>
-
-                    <span className="text-xs text-slate-600 font-medium font-sans px-2">
-                      Page <strong className="text-slate-900 font-bold">{currentPage}</strong> of <strong className="text-slate-900 font-bold">{totalPages}</strong>
-                    </span>
-
-                    <button
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                      className="text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-40 border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs transition-colors font-sans cursor-pointer disabled:cursor-not-allowed flex items-center gap-1"
-                    >
-                      <span>Next</span>
-                      <span>›</span>
-                    </button>
-                  </div>
-                </div>
+                <TablePagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  totalItems={totalItems}
+                  itemsPerPage={itemsPerPage}
+                  currentCount={orders.length}
+                  onPageChange={setCurrentPage}
+                  itemLabel="orders"
+                />
               </div>
             </div>
           </div>

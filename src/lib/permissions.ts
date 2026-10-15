@@ -12,6 +12,7 @@ export const SHIPROCKET_TRACKING_KEY = "shiprocket_tracking";
 export const SEND_TO_TEKIPOST_KEY = "send_to_tekipost";
 export const TEKIPOST_TRACKING_KEY = "tekipost_tracking";
 export const SEND_TO_DTDC_KEY = "send_to_dtdc";
+export const DTDC_TRACKING_KEY = "dtdc_tracking";
 export const SPEED_POST_KEY = "speed_post";
 export const ORDER_WEIGHT_KEY = "order_weight";
 export const ORDER_NOTE_KEY = "order_note";
@@ -178,6 +179,11 @@ export function canTrackTekipost(profile: CustomerProfile | null | undefined): b
 // Gates the "Send to DTDC" button.
 export function canSendToDtdc(profile: CustomerProfile | null | undefined): boolean {
   return hasOrdersFlag(profile, SEND_TO_DTDC_KEY);
+}
+
+// Gates the DTDC tracking details on the order detail page.
+export function canTrackDtdc(profile: CustomerProfile | null | undefined): boolean {
+  return hasOrdersFlag(profile, DTDC_TRACKING_KEY);
 }
 
 // Gates the Speed Post Details section.

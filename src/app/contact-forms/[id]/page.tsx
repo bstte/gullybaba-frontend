@@ -12,6 +12,7 @@ import {
 } from "@/src/services/api";
 import { useAuthGuard } from "@/src/hooks/useAuthGuard";
 import { hasContactFormAccess, getDefaultAllowedRoute } from "@/src/lib/permissions";
+import { ScreenOptions, ScreenOptionsToggle, TablePagination } from "@/src/components/common";
 
 interface FormSubmissionItem {
   form_id: number;
@@ -58,11 +59,54 @@ export default function ContactFormDetailPage({ params }: { params: Promise<{ id
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
+  // Screen Options & Items Per Page state
+  const SCREEN_OPTIONS_STORAGE_KEY = "gullybaba_contact_form_submissions_screen_options";
+  const [isScreenOptionsOpen, setIsScreenOptionsOpen] = useState(false);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(20);
+  const [tempItemsPerPage, setTempItemsPerPage] = useState<string>("20");
+
+  // Load itemsPerPage from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SCREEN_OPTIONS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.itemsPerPage && typeof parsed.itemsPerPage === "number") {
+          setItemsPerPage(parsed.itemsPerPage);
+          setTempItemsPerPage(parsed.itemsPerPage.toString());
+        }
+      }
+    } catch {}
+  }, []);
+
+  const toggleScreenOptions = () => {
+    setIsScreenOptionsOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setTempItemsPerPage(itemsPerPage.toString());
+      }
+      return next;
+    });
+  };
+
+  const handleApplyScreenOptions = () => {
+    const parsed = Math.max(1, Math.min(100, parseInt(tempItemsPerPage, 10) || 20));
+    setItemsPerPage(parsed);
+    setTempItemsPerPage(parsed.toString());
+    setCurrentPage(1);
+    try {
+      localStorage.setItem(SCREEN_OPTIONS_STORAGE_KEY, JSON.stringify({ itemsPerPage: parsed }));
+    } catch {}
+    setIsScreenOptionsOpen(false);
+    if (token) {
+      loadSubmissions(token, formId, 1, searchQuery, statusFilter, parsed);
+    }
+    showNotification("Screen options applied successfully", "success");
+  };
+
   // Selected Submission Modal
   const [selectedSubmission, setSelectedSubmission] = useState<FormSubmissionItem | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-
-  const limit = 20;
 
   const showNotification = (message: string, type: "success" | "error" = "success") => {
     setNotification({ message, type });
@@ -76,7 +120,8 @@ export default function ContactFormDetailPage({ params }: { params: Promise<{ id
     fId: string,
     page: number,
     searchVal: string,
-    stat: string
+    stat: string,
+    pageSize: number = itemsPerPage
   ) => {
     try {
       setIsLoading(true);
@@ -84,7 +129,7 @@ export default function ContactFormDetailPage({ params }: { params: Promise<{ id
         authToken,
         fId,
         page,
-        limit,
+        pageSize,
         searchVal,
         stat
       );
@@ -112,14 +157,14 @@ export default function ContactFormDetailPage({ params }: { params: Promise<{ id
   useEffect(() => {
     if (!ready || !token) return;
     if (profile && !hasContactFormAccess(profile)) return;
-    loadSubmissions(token, formId, currentPage, searchQuery, statusFilter);
-  }, [ready, token, profile, formId, currentPage, statusFilter]);
+    loadSubmissions(token, formId, currentPage, searchQuery, statusFilter, itemsPerPage);
+  }, [ready, token, profile, formId, currentPage, statusFilter, itemsPerPage]);
 
   const handleSearchSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!token) return;
     setCurrentPage(1);
-    loadSubmissions(token, formId, 1, searchQuery, statusFilter);
+    loadSubmissions(token, formId, 1, searchQuery, statusFilter, itemsPerPage);
   };
 
   const handleStatusToggle = async (submission: FormSubmissionItem) => {
@@ -285,8 +330,22 @@ export default function ContactFormDetailPage({ params }: { params: Promise<{ id
                 </svg>
                 <span>{isLoading ? "Refreshing..." : "Refresh"}</span>
               </button>
+
+              <ScreenOptionsToggle
+                isOpen={isScreenOptionsOpen}
+                onToggle={toggleScreenOptions}
+              />
             </div>
           </div>
+
+          {/* Screen Options Collapsible Drawer */}
+          <ScreenOptions
+            isOpen={isScreenOptionsOpen}
+            title={formInfo?.name ? `Submissions: ${formInfo.name}` : `Form Submissions`}
+            tempItemsPerPage={tempItemsPerPage}
+            onTempItemsPerPageChange={setTempItemsPerPage}
+            onApply={handleApplyScreenOptions}
+          />
 
           {/* Filters Bar */}
           <div className="bg-white border-b border-gray-200 px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
@@ -479,36 +538,15 @@ export default function ContactFormDetailPage({ params }: { params: Promise<{ id
               </div>
 
               {/* Pagination Footer */}
-              <div className="bg-gray-50/70 border-t border-gray-200 px-6 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500 font-sans">
-                <span>
-                  Showing {submissions.length > 0 ? (currentPage - 1) * limit + 1 : 0} to{" "}
-                  {Math.min(currentPage * limit, totalItems)} of {totalItems} submissions
-                </span>
-
-                {totalPages > 1 && (
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      disabled={currentPage <= 1}
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      className="px-2.5 py-1 border border-gray-250 rounded bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-xs font-medium"
-                    >
-                      Previous
-                    </button>
-                    <span className="px-2 py-1 text-gray-700 font-medium">
-                      Page {currentPage} of {totalPages}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={currentPage >= totalPages}
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      className="px-2.5 py-1 border border-gray-250 rounded bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-xs font-medium"
-                    >
-                      Next
-                    </button>
-                  </div>
-                )}
-              </div>
+              <TablePagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={itemsPerPage}
+                currentCount={submissions.length}
+                onPageChange={setCurrentPage}
+                itemLabel="submissions"
+              />
             </div>
           </div>
 
