@@ -158,8 +158,8 @@ export const AVAILABLE_COLUMNS = [
   { id: "total", label: "Total & Payment" },
   { id: "category", label: "Category" },
   { id: "status_change", label: "Status Change" },
-  { id: "delivered_by", label: "Delivered by" },
-  { id: "updated_by", label: "Updated by" },
+  // { id: "delivered_by", label: "Delivered by" },
+  // { id: "updated_by", label: "Updated by" },
   { id: "ship_to", label: "Ship to" },
   { id: "origin", label: "Origin" },
   { id: "actions", label: "Actions" },
@@ -174,11 +174,9 @@ export const DEFAULT_VISIBLE_COLUMNS: Record<ColumnId, boolean> = {
   total: true,
   category: true,
   status_change: true,
-  delivered_by: true,
-  updated_by: true,
   ship_to: false,
   origin: false,
-  actions: false,
+  actions: true,
 };
 
 const SCREEN_OPTIONS_STORAGE_KEY = "gullybaba_order_screen_options";
@@ -268,6 +266,12 @@ export default function OrdersPage() {
               ? Boolean(raw.billing)
               : DEFAULT_VISIBLE_COLUMNS.billing;
 
+          // If actions was false in previous schema or not set, default it to true
+          const actionsVal =
+            raw.actions !== undefined && raw.delivered_by === undefined
+              ? Boolean(raw.actions)
+              : true;
+
           const mergedCols: Record<ColumnId, boolean> = {
             order: raw.order !== undefined ? Boolean(raw.order) : DEFAULT_VISIBLE_COLUMNS.order,
             customer: customerVal,
@@ -275,11 +279,9 @@ export default function OrdersPage() {
             total: raw.total !== undefined ? Boolean(raw.total) : DEFAULT_VISIBLE_COLUMNS.total,
             category: raw.category !== undefined ? Boolean(raw.category) : DEFAULT_VISIBLE_COLUMNS.category,
             status_change: raw.status_change !== undefined ? Boolean(raw.status_change) : DEFAULT_VISIBLE_COLUMNS.status_change,
-            delivered_by: raw.delivered_by !== undefined ? Boolean(raw.delivered_by) : DEFAULT_VISIBLE_COLUMNS.delivered_by,
-            updated_by: raw.updated_by !== undefined ? Boolean(raw.updated_by) : DEFAULT_VISIBLE_COLUMNS.updated_by,
             ship_to: raw.ship_to !== undefined ? Boolean(raw.ship_to) : DEFAULT_VISIBLE_COLUMNS.ship_to,
             origin: raw.origin !== undefined ? Boolean(raw.origin) : DEFAULT_VISIBLE_COLUMNS.origin,
-            actions: raw.actions !== undefined ? Boolean(raw.actions) : DEFAULT_VISIBLE_COLUMNS.actions,
+            actions: actionsVal,
           };
           setVisibleColumns(mergedCols);
           setTempColumns(mergedCols);
@@ -779,7 +781,8 @@ export default function OrdersPage() {
 
           {/* Scrollable Container */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col">
-            {/* Status Tabs */}
+            {/* Status Tabs (Commented out, kept for reference) */}
+            {/*
             <div className="bg-white/90 backdrop-blur-xs border-b border-slate-200/80 px-6 py-2.5 shrink-0 overflow-x-auto">
               <div className="flex items-center gap-1.5 min-w-max">
                 {statusTabs.map((tab) => {
@@ -810,20 +813,19 @@ export default function OrdersPage() {
                 })}
               </div>
             </div>
+            */}
 
             {/* Filter Toggle & Quick Search Bar (Always visible) */}
             <div className="px-6 pt-3 pb-2 shrink-0">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                {/* Left: Filter Toggle Button + Active Count Badge + Clear Button */}
+                {/* Left: Filter Toggle Button + Status Dropdown + Active Count Badge + Clear Button */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setIsFilterOpen((prev) => !prev)}
-                    className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer font-sans shadow-2xs ${isFilterOpen
-                      ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                      : activeFiltersCount > 0
-                        ? "bg-red-50 text-[#E31E24] border-red-300 hover:bg-red-100/80"
-                        : "bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border-slate-300"
+                    className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer font-sans shadow-xs ${isFilterOpen
+                      ? "bg-red-800 text-white border-red-900"
+                      : "bg-[#E31E24] hover:bg-red-700 text-white border-red-600"
                       }`}
                     title="Toggle Filter Options"
                   >
@@ -832,12 +834,39 @@ export default function OrdersPage() {
                     </svg>
                     <span>Filters</span>
                     {activeFiltersCount > 0 && (
-                      <span className="min-w-4 h-4 px-1 rounded-full bg-[#E31E24] text-white text-[10px] flex items-center justify-center font-bold font-mono">
+                      <span className="min-w-4 h-4 px-1 rounded-full bg-white text-[#E31E24] text-[10px] flex items-center justify-center font-bold font-mono">
                         {activeFiltersCount}
                       </span>
                     )}
-                    <span className="text-[9px] ml-0.5">{isFilterOpen ? "▲" : "▼"}</span>
+                    <span className="text-[9px] ml-0.5 opacity-90">{isFilterOpen ? "▲" : "▼"}</span>
                   </button>
+
+                  {/* Status Filter Dropdown right beside Filters */}
+                  <div className="relative">
+                    <select
+                      value={selectedStatus}
+                      onChange={(e) => {
+                        setSelectedStatus(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="appearance-none bg-white hover:bg-slate-50 border border-slate-300 rounded-lg pl-3 pr-8 py-1.5 text-xs font-semibold text-slate-700 font-sans outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E31E24] transition-all shadow-2xs cursor-pointer capitalize"
+                      title="Filter by Order Status"
+                    >
+                      {statusTabs.map((tab) => (
+                        <option key={tab.value} value={tab.value}>
+                          {tab.label} {tab.count !== undefined ? `(${tab.count.toLocaleString("en-IN")})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <svg
+                      className="w-3 h-3 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
 
                   {activeFiltersCount > 0 && (
                     <button
@@ -1169,12 +1198,11 @@ export default function OrdersPage() {
                         {visibleColumns.status_change && (
                           <th className="py-3 px-3 font-bold w-[115px] whitespace-nowrap">Status Change</th>
                         )}
-                        {visibleColumns.delivered_by && (
-                          <th className="py-3 px-3.5 font-bold whitespace-nowrap min-w-[110px]">Delivered By</th>
-                        )}
-                        {visibleColumns.updated_by && (
-                          <th className="py-3 px-3.5 font-bold whitespace-nowrap min-w-[120px]">Updated By</th>
-                        )}
+                        {/* Delivered By & Updated By (Commented out as requested) */}
+                        {/*
+                        <th className="py-3 px-3.5 font-bold whitespace-nowrap min-w-[110px]">Delivered By</th>
+                        <th className="py-3 px-3.5 font-bold whitespace-nowrap min-w-[120px]">Updated By</th>
+                        */}
                         {visibleColumns.ship_to && (
                           <th className="py-3 px-4 font-bold min-w-[180px]">Ship to</th>
                         )}
@@ -1182,7 +1210,7 @@ export default function OrdersPage() {
                           <th className="py-3 px-3.5 font-bold whitespace-nowrap text-right w-[90px] pr-6">Origin</th>
                         )}
                         {visibleColumns.actions && (
-                          <th className="py-3 px-3.5 font-bold whitespace-nowrap text-center">Actions</th>
+                          <th className="py-3 px-3.5 font-bold whitespace-nowrap text-left min-w-[170px]">Actions</th>
                         )}
                       </tr>
                     </thead>
@@ -1485,43 +1513,39 @@ export default function OrdersPage() {
                                 </td>
                               )}
 
-                              {/* 7. Delivered by */}
-                              {visibleColumns.delivered_by && (
-                                <td className="py-2.5 px-3.5 font-sans whitespace-nowrap align-middle">
-                                  {order.delivered_by ? (
-                                    <span
-                                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wide ${order.delivered_by === "Shiprocket"
-                                        ? "bg-purple-50 text-purple-700 border-purple-200"
-                                        : order.delivered_by === "TekiPost"
-                                          ? "bg-blue-50 text-blue-700 border-blue-200"
-                                          : order.delivered_by === "DTDC"
-                                            ? "bg-red-50 text-red-700 border-red-200"
-                                            : "bg-slate-100 text-slate-700 border-slate-200"
-                                        }`}
-                                    >
-                                      {order.delivered_by}
+                              {/* 7. Delivered by & 8. Updated by (Commented out as requested) */}
+                              {/*
+                              <td className="py-2.5 px-3.5 font-sans whitespace-nowrap align-middle">
+                                {order.delivered_by ? (
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wide ${order.delivered_by === "Shiprocket"
+                                      ? "bg-purple-50 text-purple-700 border-purple-200"
+                                      : order.delivered_by === "TekiPost"
+                                        ? "bg-blue-50 text-blue-700 border-blue-200"
+                                        : order.delivered_by === "DTDC"
+                                          ? "bg-red-50 text-red-700 border-red-200"
+                                          : "bg-slate-100 text-slate-700 border-slate-200"
+                                      }`}
+                                  >
+                                    {order.delivered_by}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 text-xs">—</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3.5 font-sans whitespace-nowrap min-w-[120px] align-middle">
+                                {order.display_name || order.updated_by ? (
+                                  <span className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-medium">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                                    <span className="truncate max-w-[110px]" title={order.display_name || order.updated_by}>
+                                      {order.display_name || order.updated_by}
                                     </span>
-                                  ) : (
-                                    <span className="text-slate-300 text-xs">—</span>
-                                  )}
-                                </td>
-                              )}
-
-                              {/* 8. Updated by */}
-                              {visibleColumns.updated_by && (
-                                <td className="py-2.5 px-3.5 font-sans whitespace-nowrap min-w-[120px] align-middle">
-                                  {order.display_name || order.updated_by ? (
-                                    <span className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-medium">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                                      <span className="truncate max-w-[110px]" title={order.display_name || order.updated_by}>
-                                        {order.display_name || order.updated_by}
-                                      </span>
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-300 text-xs">—</span>
-                                  )}
-                                </td>
-                              )}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 text-xs">—</span>
+                                )}
+                              </td>
+                              */}
 
                               {/* 10. Ship to */}
                               {visibleColumns.ship_to && (
@@ -1557,18 +1581,40 @@ export default function OrdersPage() {
 
                               {/* 12. Actions */}
                               {visibleColumns.actions && (
-                                <td className="py-2.5 px-3.5 whitespace-nowrap text-center align-middle" onClick={(e) => e.stopPropagation()}>
-                                  <Link
-                                    href={`/orders/${order.id}`}
-                                    title="View Order Details"
-                                    className="px-2.5 py-1 text-slate-700 hover:text-white bg-slate-100 hover:bg-slate-900 rounded-md text-[11px] font-semibold transition-colors font-sans cursor-pointer inline-flex items-center gap-1"
-                                  >
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                    </svg>
-                                    <span>View</span>
-                                  </Link>
+                                <td className="py-2.5 px-3.5 whitespace-nowrap align-middle" onClick={(e) => e.stopPropagation()}>
+                                  <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center text-[11px] font-sans">
+                                    <span className="font-semibold text-slate-500 whitespace-nowrap">delivered by :</span>
+                                    <div>
+                                      {order.delivered_by ? (
+                                        <span
+                                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wide ${order.delivered_by === "Shiprocket"
+                                            ? "bg-purple-50 text-purple-700 border-purple-200"
+                                            : order.delivered_by === "TekiPost"
+                                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                                              : order.delivered_by === "DTDC"
+                                                ? "bg-red-50 text-red-700 border-red-200"
+                                                : "bg-slate-100 text-slate-700 border-slate-200"
+                                            }`}
+                                        >
+                                          {order.delivered_by}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400 font-normal">—</span>
+                                      )}
+                                    </div>
+
+                                    <span className="font-semibold text-slate-500 whitespace-nowrap">update by :</span>
+                                    <div>
+                                      {order.display_name || order.updated_by ? (
+                                        <span className="inline-flex items-center gap-1 text-slate-800 font-medium truncate max-w-[130px]" title={order.display_name || order.updated_by}>
+                                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                                          <span className="truncate">{order.display_name || order.updated_by}</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400 font-normal">—</span>
+                                      )}
+                                    </div>
+                                  </div>
                                 </td>
                               )}
                             </tr>

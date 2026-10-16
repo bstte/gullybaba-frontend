@@ -44,7 +44,7 @@ export default function ContactFormsPage() {
           setTempItemsPerPage(parsed.itemsPerPage.toString());
         }
       }
-    } catch {}
+    } catch { }
   }, []);
 
   const toggleScreenOptions = () => {
@@ -64,7 +64,7 @@ export default function ContactFormsPage() {
     setCurrentPage(1);
     try {
       localStorage.setItem(SCREEN_OPTIONS_STORAGE_KEY, JSON.stringify({ itemsPerPage: parsed }));
-    } catch {}
+    } catch { }
     setIsScreenOptionsOpen(false);
     showNotification("Screen options applied successfully", "success");
   };
@@ -130,11 +130,10 @@ export default function ContactFormsPage() {
           {/* Toast Notification */}
           {notification && (
             <div
-              className={`absolute top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg border text-xs font-medium flex items-center gap-2.5 transition-all ${
-                notification.type === "success"
+              className={`absolute top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg border text-xs font-medium flex items-center gap-2.5 transition-all ${notification.type === "success"
                   ? "bg-emerald-50 border-emerald-200 text-emerald-800"
                   : "bg-red-50 border-red-200 text-red-800"
-              }`}
+                }`}
             >
               <span className="w-2 h-2 rounded-full bg-current"></span>
               <span>{notification.message}</span>
@@ -317,7 +316,7 @@ export default function ContactFormsPage() {
                                 </svg>
                               </div>
                               <div>
-                                <span className="font-bold text-gray-900 group-hover:text-[#E31E24] transition-colors text-xs font-sans">
+                                <span className="font-bold text-gray-900 group-hover:text-[#E31E24] transition-colors text-xs font-sans capitalize">
                                   {form.name}
                                 </span>
                                 {form.last_submission_date && (
@@ -330,11 +329,10 @@ export default function ContactFormsPage() {
                           </td>
                           <td className="py-3.5 px-6 text-center">
                             <span
-                              className={`inline-flex items-center justify-center font-bold px-2.5 py-1 rounded-full text-xs font-mono transition-transform group-hover:scale-105 ${
-                                form.count > 0
+                              className={`inline-flex items-center justify-center font-bold px-2.5 py-1 rounded-full text-xs font-mono transition-transform group-hover:scale-105 ${form.count > 0
                                   ? "bg-blue-50 text-blue-700 border border-blue-200"
                                   : "bg-gray-100 text-gray-500 border border-gray-200"
-                              }`}
+                                }`}
                             >
                               {form.count}
                             </span>
