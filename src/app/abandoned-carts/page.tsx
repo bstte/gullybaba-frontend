@@ -218,7 +218,7 @@ export default function AbandonedCartsPage() {
 
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider">
+                    <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold capitalize tracking-normal">
                       <th className="py-3.5 px-4 font-bold w-20">ID</th>
                       <th className="py-3.5 px-4 font-bold">Phone</th>
                       <th className="py-3.5 px-4 font-bold">Product</th>

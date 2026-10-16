@@ -274,7 +274,7 @@ export default function ContactFormsPage() {
 
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider text-[11px]">
+                    <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-semibold capitalize tracking-normal text-[11px]">
                       <th className="py-3 px-6 font-bold w-16">#</th>
                       <th className="py-3 px-6 font-bold">Name</th>
                       <th className="py-3 px-6 font-bold text-center w-36">Submissions Count</th>

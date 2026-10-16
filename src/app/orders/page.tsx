@@ -160,9 +160,9 @@ export const AVAILABLE_COLUMNS = [
   { id: "status_change", label: "Status Change" },
   // { id: "delivered_by", label: "Delivered by" },
   // { id: "updated_by", label: "Updated by" },
-  { id: "ship_to", label: "Ship to" },
-  { id: "origin", label: "Origin" },
+  { id: "ship_to", label: "Ship To" },
   { id: "actions", label: "Actions" },
+  { id: "origin", label: "Origin" },
 ] as const;
 
 export type ColumnId = (typeof AVAILABLE_COLUMNS)[number]["id"];
@@ -175,8 +175,8 @@ export const DEFAULT_VISIBLE_COLUMNS: Record<ColumnId, boolean> = {
   category: true,
   status_change: true,
   ship_to: false,
-  origin: false,
   actions: true,
+  origin: false,
 };
 
 const SCREEN_OPTIONS_STORAGE_KEY = "gullybaba_order_screen_options";
@@ -280,8 +280,8 @@ export default function OrdersPage() {
             category: raw.category !== undefined ? Boolean(raw.category) : DEFAULT_VISIBLE_COLUMNS.category,
             status_change: raw.status_change !== undefined ? Boolean(raw.status_change) : DEFAULT_VISIBLE_COLUMNS.status_change,
             ship_to: raw.ship_to !== undefined ? Boolean(raw.ship_to) : DEFAULT_VISIBLE_COLUMNS.ship_to,
-            origin: raw.origin !== undefined ? Boolean(raw.origin) : DEFAULT_VISIBLE_COLUMNS.origin,
             actions: actionsVal,
+            origin: raw.origin !== undefined ? Boolean(raw.origin) : DEFAULT_VISIBLE_COLUMNS.origin,
           };
           setVisibleColumns(mergedCols);
           setTempColumns(mergedCols);
@@ -1160,7 +1160,7 @@ export default function OrdersPage() {
 
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="bg-slate-50/95 sticky top-0 z-10 border-b border-slate-200/80 text-slate-500 font-semibold text-[11px] uppercase tracking-wider backdrop-blur-xs">
+                      <tr className="bg-slate-50/95 sticky top-0 z-10 border-b border-slate-200/80 text-slate-500 font-semibold text-[11px] capitalize tracking-normal backdrop-blur-xs">
                         {visibleColumns.order && (
                           <th className="py-3 px-3.5 font-bold whitespace-nowrap min-w-[150px]">
                             <div className="flex items-center gap-2">
@@ -1204,13 +1204,13 @@ export default function OrdersPage() {
                         <th className="py-3 px-3.5 font-bold whitespace-nowrap min-w-[120px]">Updated By</th>
                         */}
                         {visibleColumns.ship_to && (
-                          <th className="py-3 px-4 font-bold min-w-[180px]">Ship to</th>
+                          <th className="py-3 px-4 font-bold min-w-[180px]">Ship To</th>
+                        )}
+                        {visibleColumns.actions && (
+                          <th className="py-3 px-3.5 font-bold whitespace-nowrap text-left min-w-[200px]">Actions</th>
                         )}
                         {visibleColumns.origin && (
                           <th className="py-3 px-3.5 font-bold whitespace-nowrap text-right w-[90px] pr-6">Origin</th>
-                        )}
-                        {visibleColumns.actions && (
-                          <th className="py-3 px-3.5 font-bold whitespace-nowrap text-left min-w-[170px]">Actions</th>
                         )}
                       </tr>
                     </thead>
@@ -1572,49 +1572,53 @@ export default function OrdersPage() {
                                 </td>
                               )}
 
-                              {/* 11. Origin */}
-                              {visibleColumns.origin && (
-                                <td className="py-2.5 px-3.5 text-slate-500 font-sans whitespace-nowrap text-right w-[90px] pr-6 align-middle">
-                                  {order.origin || "—"}
+                              {/* 11. Actions */}
+                              {visibleColumns.actions && (
+                                <td className="py-2.5 px-3.5 align-middle" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex flex-col gap-2 text-[11px] font-sans">
+                                    <div className="flex flex-col">
+                                      <span className="font-semibold text-slate-500 text-[10.5px]">delivered by :</span>
+                                      <div className="mt-0.5">
+                                        {order.delivered_by ? (
+                                          <span
+                                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wide ${order.delivered_by === "Shiprocket"
+                                              ? "bg-purple-50 text-purple-700 border-purple-200"
+                                              : order.delivered_by === "TekiPost"
+                                                ? "bg-blue-50 text-blue-700 border-blue-200"
+                                                : order.delivered_by === "DTDC"
+                                                  ? "bg-red-50 text-red-700 border-red-200"
+                                                  : "bg-slate-100 text-slate-700 border-slate-200"
+                                              }`}
+                                          >
+                                            {order.delivered_by}
+                                          </span>
+                                        ) : (
+                                          <span className="text-slate-400 font-normal">—</span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex flex-col">
+                                      <span className="font-semibold text-slate-500 text-[10.5px]">update by :</span>
+                                      <div className="mt-0.5">
+                                        {order.display_name || order.updated_by ? (
+                                          <span className="inline-flex items-center gap-1.5 text-slate-800 font-medium text-xs break-words" title={order.display_name || order.updated_by}>
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                                            <span>{order.display_name || order.updated_by}</span>
+                                          </span>
+                                        ) : (
+                                          <span className="text-slate-400 font-normal">—</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
                                 </td>
                               )}
 
-                              {/* 12. Actions */}
-                              {visibleColumns.actions && (
-                                <td className="py-2.5 px-3.5 whitespace-nowrap align-middle" onClick={(e) => e.stopPropagation()}>
-                                  <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center text-[11px] font-sans">
-                                    <span className="font-semibold text-slate-500 whitespace-nowrap">delivered by :</span>
-                                    <div>
-                                      {order.delivered_by ? (
-                                        <span
-                                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wide ${order.delivered_by === "Shiprocket"
-                                            ? "bg-purple-50 text-purple-700 border-purple-200"
-                                            : order.delivered_by === "TekiPost"
-                                              ? "bg-blue-50 text-blue-700 border-blue-200"
-                                              : order.delivered_by === "DTDC"
-                                                ? "bg-red-50 text-red-700 border-red-200"
-                                                : "bg-slate-100 text-slate-700 border-slate-200"
-                                            }`}
-                                        >
-                                          {order.delivered_by}
-                                        </span>
-                                      ) : (
-                                        <span className="text-slate-400 font-normal">—</span>
-                                      )}
-                                    </div>
-
-                                    <span className="font-semibold text-slate-500 whitespace-nowrap">update by :</span>
-                                    <div>
-                                      {order.display_name || order.updated_by ? (
-                                        <span className="inline-flex items-center gap-1 text-slate-800 font-medium truncate max-w-[130px]" title={order.display_name || order.updated_by}>
-                                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                                          <span className="truncate">{order.display_name || order.updated_by}</span>
-                                        </span>
-                                      ) : (
-                                        <span className="text-slate-400 font-normal">—</span>
-                                      )}
-                                    </div>
-                                  </div>
+                              {/* 12. Origin */}
+                              {visibleColumns.origin && (
+                                <td className="py-2.5 px-3.5 text-slate-500 font-sans whitespace-nowrap text-right w-[90px] pr-6 align-middle">
+                                  {order.origin || "—"}
                                 </td>
                               )}
                             </tr>

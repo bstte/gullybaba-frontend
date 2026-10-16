@@ -428,7 +428,7 @@ export default function DownloadsPage() {
                   <>
                     <table className="w-full text-left border-collapse text-xs">
                           <thead>
-                            <tr className="bg-gray-100/75 border-b border-gray-200 text-gray-700 font-bold uppercase tracking-wider text-[11px]">
+                            <tr className="bg-gray-100/75 border-b border-gray-200 text-gray-700 font-bold capitalize tracking-normal text-[11px]">
                               <th className="py-3 px-4 w-20 text-center font-bold">S. No.</th>
                               <th className="py-3 px-6 font-bold">Date</th>
                               <th className="py-3 px-6 font-bold">File Name</th>

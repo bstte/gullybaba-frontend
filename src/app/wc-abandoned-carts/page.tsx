@@ -266,7 +266,7 @@ export default function WcAbandonedCartsPage() {
 
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider">
+                    <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold capitalize tracking-normal">
                       <th className="py-3.5 px-4 font-bold w-20">ID</th>
                       <th className="py-3.5 px-4 font-bold">Email</th>
                       <th className="py-3.5 px-4 font-bold">Customer</th>
@@ -502,7 +502,7 @@ export default function WcAbandonedCartsPage() {
             <div className="flex-1 overflow-y-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead className="sticky top-0 bg-gray-50">
-                  <tr className="border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider">
+                  <tr className="border-b border-gray-200 text-gray-600 font-semibold capitalize tracking-normal">
                     <th className="py-2.5 px-5 font-bold">Item Name</th>
                     <th className="py-2.5 px-5 font-bold">Item Cost</th>
                     <th className="py-2.5 px-5 font-bold">Item Quantity</th>

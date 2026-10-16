@@ -2142,7 +2142,7 @@ export default function OrderDetailPage() {
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse text-xs">
                           <thead>
-                            <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-500 font-semibold text-[11px] uppercase tracking-wider">
+                            <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-500 font-semibold text-[11px] capitalize tracking-normal">
                               <th className="py-3 px-5 font-semibold">Item & Details</th>
                               <th className="py-3 px-4 font-semibold">Category</th>
                               <th className="py-3 px-4 font-semibold">Code / SKU</th>
